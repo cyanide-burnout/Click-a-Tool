@@ -5,14 +5,16 @@
 
 ]]
 
-local ffi    = require('ffi')
-local zlib   = require('zlib')
-local client = require('http.client')
+local ffi     = require('ffi')
+local zlib    = require('zlib')
+local pickle  = require('pickle')
+local msgpack = require('msgpack')
+local client  = require('http.client')
 
-ffi.cdef[[
-  char* mp_encode_float(char* data, float value); 
-  char* mp_encode_double(char* data, double value); 
-]]
+ffi.cdef([[
+  char* mp_encode_float(char* data, float value);
+  char* mp_encode_double(char* data, double value);
+]])
 
 local function getPackedFloat32(value)
   if type(value) == 'number' then
@@ -33,16 +35,10 @@ local function getPackedFloat64(value)
 end
 
 local function makeCall(object, data)
-  local method, body
-  if type(data) == 'table' then
-    method = 'POST'
-    body   = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish')
-  end
-  if type(data) == 'string' then
-    method = 'POST'
-    body   = zlib.deflate(9, 15)(data, 'finish')
-  end
-  local status, result = pcall(object.client.request, object.client, method or 'GET', object.location, body, object.options)
+  local body
+  if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish') end
+  if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                                 end
+  local status, result = pcall(object.client.request, object.client, object.method, object.location, body, object.options)
   if status and result.status ~= 200 then
     status = false
     result = result.body
@@ -51,16 +47,34 @@ local function makeCall(object, data)
 end
 
 local function getNew(location, headers, query, delimiter)
-  headers['Content-Encoding'] = 'deflate'
   local object =
   {
+    method    = 'GET',
     client    = client.new({ max_connections = 1 }),
     options   = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 },
     location  = location .. '?query=' .. query:gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end),
     delimiter = delimiter or ''
   }
+  if query:match('^INSERT ') then
+    object.method = 'POST'
+    object.options.headers['Content-Encoding'] = 'deflate'
+  end
   setmetatable(object, { __call = makeCall })
   return object
 end
 
-return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew }
+local function parsePackedData(data, columns)
+  local list   = { }
+  local index  = 1
+  local header = pickle.pack('bn', 0xdc, columns)
+  local length = data:len()
+  while index <= data:len() do
+    local row, length = msgpack.decode(header .. data:sub(index, index + length - 1))
+    length = length - header:len() - 1
+    index  = index  + length
+    table.insert(list, row)
+  end
+  return list
+end
+
+return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew, parse = parsePackedData }
