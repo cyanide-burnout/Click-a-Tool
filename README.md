@@ -9,7 +9,7 @@ Since ClickHouse uses strict form of data, there are helper functions to make so
 * getFloat32
 * getFloat64
 
-Also I am going to add support of UUIDs when it will be implemented in ClickHouse (https://github.com/ClickHouse/ClickHouse/issues/33756)
+Also I am going to add passing of UUIDs over MessagePack when it will be implemented in ClickHouse (https://github.com/ClickHouse/ClickHouse/issues/33756)
 
 
 ## Requirements
@@ -36,13 +36,11 @@ local fiber   = require('fiber')
 local msgpack = require('msgpack')
 local house   = require('ClickHouse')
 
+local credentials = { ['X-ClickHouse-User'] = 'user', ['X-ClickHouse-Key'] = 'password', ['X-ClickHouse-Database'] = 'database' }
+
 local query, status, result
 
-query = house.new(
-  'http://localhost:8123/',
-  { ['X-ClickHouse-User'] = 'user', ['X-ClickHouse-Key'] = 'password', ['X-ClickHouse-Database'] = 'database' },
-  'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT MsgPack')
-
+query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT MsgPack')
 status, result = query(
   {
     msgpack.encode(1) .. msgpack.encode(math.floor(fiber.time())) .. msgpack.encode('Test 1') .. house.getFloat32(1.01),
@@ -51,11 +49,7 @@ status, result = query(
 
 log.info('ClickHouse call result of query using MessagePack: %s', result)
 
-query = house.new(
-  'http://localhost:8123/',
-  { ['X-ClickHouse-User'] = 'user', ['X-ClickHouse-Key'] = 'password', ['X-ClickHouse-Database'] = 'database' },
-  'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated', '\n')
-
+query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated', '\n')
 status, result = query2(
   {
     '3\t2021-01-01 00:00:00\tTest 3\t3.03',
