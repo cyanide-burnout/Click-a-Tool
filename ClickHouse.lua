@@ -52,7 +52,7 @@ local function getNew(location, headers, query, delimiter)
     location  = location .. '?query=' .. query:gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end),
     delimiter = delimiter or ''
   }
-  if query:upper():match('^INSERT ') then
+  if query:upper():starts('INSERT ') then
     object.method = 'POST'
     object.options.headers['Content-Encoding'] = 'deflate'
   end
