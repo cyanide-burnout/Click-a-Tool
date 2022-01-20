@@ -39,11 +39,9 @@ local function makeCall(object, data)
   if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish') end
   if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                                 end
   local status, result = pcall(object.client.request, object.client, object.method, object.location, body, object.options)
-  if status and result.status ~= 200 then
-    status = false
-    result = result.body
-  end
-  return status, result
+  if not status           then return false, result      end
+  if result.status ~= 200 then return false, result.body end
+  return true, result.body
 end
 
 local function getNew(location, headers, query, delimiter)

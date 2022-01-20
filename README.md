@@ -62,6 +62,6 @@ query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name,
 status, result = query()
 
 log.info('Returned data:')
-house.parse(result.body, 4, log.info)
+house.parse(result, 4, log.info)
 
 ```
