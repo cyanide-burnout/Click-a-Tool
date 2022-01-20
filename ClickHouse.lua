@@ -63,7 +63,7 @@ local function getNew(location, headers, query, delimiter)
   return object
 end
 
-local function parsePackedData(data, columns, callback)
+local function parsePackedData(data, columns, callback, ...)
   local index  = 1
   local header = pickle.pack('bn', 0xdc, columns)
   local length = data:len()
@@ -71,7 +71,7 @@ local function parsePackedData(data, columns, callback)
     local row, length = msgpack.decode(header .. data:sub(index, index + length - 1))
     length = length - header:len() - 1
     index  = index  + length
-    callback(row)
+    callback(row, ...)
   end
 end
 
