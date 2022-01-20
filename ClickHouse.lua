@@ -63,8 +63,7 @@ local function getNew(location, headers, query, delimiter)
   return object
 end
 
-local function parsePackedData(data, columns)
-  local list   = { }
+local function parsePackedData(data, columns, callback)
   local index  = 1
   local header = pickle.pack('bn', 0xdc, columns)
   local length = data:len()
@@ -72,9 +71,8 @@ local function parsePackedData(data, columns)
     local row, length = msgpack.decode(header .. data:sub(index, index + length - 1))
     length = length - header:len() - 1
     index  = index  + length
-    table.insert(list, row)
+    callback(row)
   end
-  return list
 end
 
 return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew, parse = parsePackedData }

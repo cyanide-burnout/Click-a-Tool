@@ -61,9 +61,7 @@ log.info('ClickHouse call result of query using TSV: %s', result)
 query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality FORMAT MsgPack')
 status, result = query()
 
-list = house.parse(result.body, 4)
-
 log.info('Returned data:')
-log.info(list)
+house.parse(result.body, 4, log.info)
 
 ```
