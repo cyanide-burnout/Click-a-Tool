@@ -35,11 +35,11 @@ end
 local function makeCall(object, data)
   local method, body
   if type(data) == 'table' then
-    mathod = 'POST'
+    method = 'POST'
     body   = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish')
   end
   if type(data) == 'string' then
-    mathod = 'POST'
+    method = 'POST'
     body   = zlib.deflate(9, 15)(data, 'finish')
   end
   local status, result = pcall(object.client.request, object.client, method or 'GET', object.location, body, object.options)
