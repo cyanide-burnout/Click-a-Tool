@@ -7,7 +7,6 @@
 
 local ffi     = require('ffi')
 local zlib    = require('zlib')
-local pickle  = require('pickle')
 local msgpack = require('msgpack')
 local client  = require('http.client')
 
@@ -62,13 +61,10 @@ local function getNew(location, headers, query, delimiter)
 end
 
 local function parsePackedData(data, columns, callback, ...)
-  local index  = 1
-  local header = pickle.pack('bn', 0xdc, columns)
-  local length = data:len()
-  while index <= data:len() do
-    local row, length = msgpack.decode(header .. data:sub(index, index + length - 1))
-    length = length - header:len() - 1
-    index  = index  + length
+  local position = 1
+  while position <= data:len() do
+    local row = { }
+    for column = 1, columns do row[column], position = msgpack.decode(data, position) end
     callback(row, ...)
   end
 end
