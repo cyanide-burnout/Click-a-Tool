@@ -18,7 +18,7 @@ Also I am going to add passing of UUIDs over MessagePack when it will be impleme
 
 ## Usage
 
-...
+```SQL
 CREATE TABLE SomeData
 (
   `ID`       UInt32,
@@ -28,9 +28,9 @@ CREATE TABLE SomeData
 )
 ENGINE = MergeTree()
 ORDER BY `Created`;
-...
+```
 
-...
+```Lua
 local log     = require('log')
 local fiber   = require('fiber')
 local msgpack = require('msgpack')
@@ -57,4 +57,4 @@ status, result = query2(
   })
 
 log.info('ClickHouse call result of query using TSV: %s', result)
-...
+```
