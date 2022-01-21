@@ -33,6 +33,23 @@ local function getPackedFloat64(value)
   return '\192'
 end
 
+local function composePackedRow(data)
+  local binary = msgpack.encode(data)
+  local type   = binary:byte(1)
+  if type >= 0x90 and type <= 0x9f then return binary:sub(2) end
+  if type == 0xdc                  then return binary:sub(4) end
+  if type == 0xdd                  then return binary:sub(6) end
+end
+
+local function parsePackedData(data, columns, callback, ...)
+  local position = 1
+  while position <= data:len() do
+    local row = { }
+    for column = 1, columns do row[column], position = msgpack.decode(data, position) end
+    callback(row, ...)
+  end
+end
+
 local function getEscapedString(value)
   return tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end)
 end
@@ -72,21 +89,4 @@ local function getNew(location, headers, query, delimiter)
   return object
 end
 
-local function parsePackedData(data, columns, callback, ...)
-  local position = 1
-  while position <= data:len() do
-    local row = { }
-    for column = 1, columns do row[column], position = msgpack.decode(data, position) end
-    callback(row, ...)
-  end
-end
-
-local function composePackedRow(data)
-  local binary = msgpack.encode(data)
-  local type   = binary:byte(1)
-  if type >= 0x90 and type <= 0x9f then return binary:sub(2) end
-  if type == 0xdc                  then return binary:sub(4) end
-  if type == 0xdd                  then return binary:sub(6) end
-end
-
-return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew, parse = parsePackedData, compose = composePackedRow }
+return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, compose = composePackedRow, parse = parsePackedData, new = getNew }
