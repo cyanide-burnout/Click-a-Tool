@@ -47,7 +47,12 @@ local fiber   = require('fiber')
 local msgpack = require('msgpack')
 local house   = require('ClickHouse')
 
-local credentials = { ['X-ClickHouse-User'] = 'user', ['X-ClickHouse-Key'] = 'password', ['X-ClickHouse-Database'] = 'database' }
+local credentials =
+{
+  ['X-ClickHouse-User'    ] = 'user',
+  ['X-ClickHouse-Key'     ] = 'password',
+  ['X-ClickHouse-Database'] = 'database'
+}
 
 local query, status, result, list
 
@@ -89,8 +94,8 @@ end
 query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality WHERE ID > {id:UInt32} FORMAT MsgPack')
 status, result = query({ id = 3 })
 if status then
-  local list = { }
-  house.parse(result, 4, function (row, list) table.insert(list, row) end, list)
+  list = { }
+  house.parse(result, 4, list)
   log.info('Data of parameterized query:')
   log.info(list)
 end
