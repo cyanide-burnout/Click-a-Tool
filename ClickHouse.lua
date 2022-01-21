@@ -81,4 +81,12 @@ local function parsePackedData(data, columns, callback, ...)
   end
 end
 
-return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew, parse = parsePackedData }
+local function composePackedRow(data)
+  local binary = msgpack.encode(data)
+  local type   = binary:byte(1)
+  if type >= 0x90 and type <= 0x9f then return binary:sub(2) end
+  if type == 0xdc                  then return binary:sub(4) end
+  if type == 0xdd                  then return binary:sub(6) end
+end
+
+return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, new = getNew, parse = parsePackedData, compose = composePackedRow }
