@@ -27,7 +27,7 @@ CREATE TABLE SomeData
   `Quality`  Nullable(Float32)
 )
 ENGINE = MergeTree()
-ORDER BY `Created`;
+ORDER BY `Date`;
 ```
 
 ```Lua
