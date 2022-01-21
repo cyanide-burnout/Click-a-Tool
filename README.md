@@ -21,7 +21,7 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 * **house.compose({ array, of, values, ... })** - convert passed set of field to MessagePack compatible with ClickHouse
 * **house.parse(repoonse, table_to_save)** - parse MessagePack-formatted response into a table variable
 * **house.parse(repoonse, callback [, arguments])** - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
-* **house.new(url, creds, query [, delimiter])** - create a new query object. *creds* are an KV set of HTTP headers to set (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
+* **house.new(url, creds, query [, delimiter])** - create a new query object. *creds* are an KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
 * **query(table_of_rows)** - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
 * **query(raw_string)** - make an INSERT query and pass a raw data string
 * **query({ param1=value1, param2=value2, ... })** - make a parameterized query
