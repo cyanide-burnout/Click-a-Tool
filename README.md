@@ -5,6 +5,8 @@ Artem Prilutskiy, 2022
 
 Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
 
+Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/
+
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
 
 ## Requirements
@@ -15,8 +17,8 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 
 * **house.getFloat32(value)** and **house.getFloat64(value)** - get strictly formated float value in MessagePack
 * **house.compose({ array, of, values, ... })** - convert set of field in MessagePack (compatible to ClickHouse)
-* **house.parse(repoonse, table_to_save)** - parse MessagePack-formatted response into a table variable
-* **house.parse(repoonse, callback [, arguments])** - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
+* **house.parse(repoonse, count_of_columns, table_to_save)** - parse MessagePack-formatted response into a table variable
+* **house.parse(repoonse, count_of_columns, callback [, arguments])** - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
 * **house.new(url, credentials, query [, delimiter])** - create a new query object. *credentials* is an KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
 * **query(table_of_rows)** - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
 * **query(raw_string)** - make an INSERT query and pass a raw data string
