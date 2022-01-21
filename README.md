@@ -77,9 +77,9 @@ end
 query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality WHERE ID > {id:UInt32} FORMAT MsgPack')
 status, result = query({ id = 3 })
 if status then
-  local data = { }
-  house.parse(result, 4, function (row) table.insert(data, row) end)
+  local list = { }
+  house.parse(result, 4, function (row, list) table.insert(data, row) end, list)
   log.info('Data of parameterized query:')
-  log.info(data)
+  log.info(list)
 end
 ```
