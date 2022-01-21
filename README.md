@@ -9,8 +9,7 @@ Since ClickHouse uses strict form of data, there are helper functions to make so
 * getFloat32
 * getFloat64
 
-Also I am going to add passing of UUIDs over MessagePack when it will be implemented in ClickHouse (https://github.com/ClickHouse/ClickHouse/issues/33756)
-
+About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
 
 ## Requirements
 
