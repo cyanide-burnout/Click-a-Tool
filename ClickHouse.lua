@@ -35,10 +35,10 @@ end
 
 local function composePackedRow(data)
   local binary = msgpack.encode(data)
-  local type   = binary:byte(1)
-  if type >= 0x90 and type <= 0x9f then return binary:sub(2) end
-  if type == 0xdc                  then return binary:sub(4) end
-  if type == 0xdd                  then return binary:sub(6) end
+  local kind   = binary:byte(1)
+  if kind >= 0x90 and kind <= 0x9f then return binary:sub(2) end
+  if kind == 0xdc                  then return binary:sub(4) end
+  if kind == 0xdd                  then return binary:sub(6) end
 end
 
 local function parsePackedData(data, columns, callback, ...)
