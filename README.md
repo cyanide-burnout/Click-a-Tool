@@ -78,7 +78,7 @@ query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name,
 status, result = query({ id = 3 })
 if status then
   local list = { }
-  house.parse(result, 4, function (row, list) table.insert(data, row) end, list)
+  house.parse(result, 4, function (row, list) table.insert(list, row) end, list)
   log.info('Data of parameterized query:')
   log.info(list)
 end
