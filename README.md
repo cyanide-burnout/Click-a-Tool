@@ -61,7 +61,13 @@ log.info('ClickHouse call result of query using TSV: %s', result)
 query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality FORMAT MsgPack')
 status, result = query()
 
-log.info('Returned data:')
+log.info('Data of non-paramertised query:')
+house.parse(result, 4, log.info)
+
+query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality WHERE ID > {id:UInt32} FORMAT MsgPack')
+status, result = query({ id = 3 })
+
+log.info('Data of paramertised query:')
 house.parse(result, 4, log.info)
 
 ```

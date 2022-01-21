@@ -33,11 +33,22 @@ local function getPackedFloat64(value)
   return '\192'
 end
 
+local function getEscapedString(value)
+  return tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end)
+end
+
 local function makeCall(object, data)
-  local body
-  if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish') end
-  if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                                 end
-  local status, result = pcall(object.client.request, object.client, object.method, object.location, body, object.options)
+  local location, body
+  if not object.body then
+    if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish') end
+    if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                                 end
+  end
+  if object.body and type(data) == 'table' then
+    local query = { }
+    for name, value in pairs(data) do table.insert(query, string.format('param_%s=%s', name, getEscapedString(value))) end
+    location = object.location .. '?' .. table.concat(query, '&')
+  end
+  local status, result = pcall(object.client.post, object.client, location or object.location, object.body or body, object.options)
   if not status           then return false, result      end
   if result.status ~= 200 then return false, result.body end
   return true, result.body
@@ -46,15 +57,16 @@ end
 local function getNew(location, headers, query, delimiter)
   local object =
   {
-    method    = 'GET',
-    client    = client.new({ max_connections = 1 }),
-    options   = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 },
-    location  = location .. '?query=' .. query:gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end),
-    delimiter = delimiter or ''
+    client  = client.new({ max_connections = 1 }),
+    options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 }
   }
-  if query:upper():starts('INSERT ') then
-    object.method = 'POST'
+  if query:upper():match('^INSERT ') then
+    object.location  = location .. '?query=' .. getEscapedString(query)
+    object.delimiter = delimiter or ''
     object.options.headers['Content-Encoding'] = 'deflate'
+  else
+    object.location = location
+    object.body     = query
   end
   setmetatable(object, { __call = makeCall })
   return object
