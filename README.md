@@ -3,11 +3,7 @@ A light ClickHouse client for Tarantool
 
 Artem Prilutskiy, 2022
 
-Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression.
-
-Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format:
-* getFloat32
-* getFloat64
+Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
 
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
 
