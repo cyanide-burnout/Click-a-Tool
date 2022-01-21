@@ -41,12 +41,13 @@ local function composePackedRow(data)
   if kind == 0xdd                  then return binary:sub(6) end
 end
 
-local function parsePackedData(data, columns, callback, ...)
+local function parsePackedData(data, columns, receiver, ...)
   local position = 1
   while position <= data:len() do
     local row = { }
     for column = 1, columns do row[column], position = msgpack.decode(data, position) end
-    callback(row, ...)
+    if type(receiver) == 'table'    then table.insert(receiver, row) end
+    if type(receiver) == 'function' then receiver(row, ...)          end
   end
 end
 
