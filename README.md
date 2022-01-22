@@ -10,6 +10,7 @@ The library also can provide limited support of RowBinary. You can use if when y
 Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/
 
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
+Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
 
 ## Requirements
 
