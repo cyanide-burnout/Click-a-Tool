@@ -5,6 +5,8 @@ Artem Prilutskiy, 2022
 
 Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
 
+The library also can provide limited support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs. :)
+
 Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/
 
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
@@ -15,15 +17,21 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 
 ## API
 
-* **house.getFloat32(value)** and **house.getFloat64(value)** - get strictly formated float value in MessagePack
-* **house.compose({ array, of, values, ... })** - convert set of field in MessagePack (compatible to ClickHouse)
-* **house.parse(repoonse, count_of_columns, table_to_save)** - parse MessagePack-formatted response into a table variable
-* **house.parse(repoonse, count_of_columns, callback [, arguments])** - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
-* **house.new(url, credentials, query [, delimiter])** - create a new query object. *credentials* is an KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
-* **query(table_of_rows)** - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
-* **query(raw_string)** - make an INSERT query and pass a raw data string
-* **query({ param1=value1, param2=value2, ... })** - make a parameterized query
-* **query()** - make a non-parameterized query
+* **MessagePack**
+* *house.getFloat32(value)** and **house.getFloat64(value)* - encode strictly formated float value in MessagePack
+* *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
+* *house.parse(repoonse, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
+* *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
+* **RowBinary**
+* *getLEB128(value)* - encode LEB128 unisgned integer value
+* *getString(value)* - encode String of variable length
+* *getNullable([format,] value [, ...])* - encode Nullable value, where *format* uses Tarantool's *picle.pack()* format. If *format* is not passed, *value* will be interpreted as a string of variable length.
+* **Query**
+* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is an KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
+* *query(table_of_rows)* - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
+* *query(raw_string)* - make an INSERT query and pass a raw data string
+* *query({ param1=value1, param2=value2, ... })* - make a parameterized query
+* *query()* - make a non-parameterized query
 
 You are able to create a query object at once and call it many times with differect parameters (data to insert or parameters to query).
 
@@ -44,6 +52,7 @@ ORDER BY `Date`;
 ```Lua
 local log     = require('log')
 local fiber   = require('fiber')
+local pickle  = require('pickle')
 local msgpack = require('msgpack')
 local house   = require('ClickHouse')
 
@@ -65,21 +74,30 @@ status, result = query(
   })
 log.info('ClickHouse call result of query using MessagePack: %s', result)
 
--- INSERT data in TSV format
+-- INSERT data in TabSeparated format
 query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated', '\n')
 status, result = query(
   {
     '3\t2021-01-01 00:00:00\tTest 3\t3.03',
     '4\t2021-01-01 00:00:00\tTest 5\t4.04'
   })
-log.info('ClickHouse call result of query using TSV: %s', result)
+log.info('ClickHouse call result of query using TabSeparated: %s', result)
+
+-- INSERT data in RowBinary format
+query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT RowBinary', '\n')
+status, result = query(
+  {
+    pickle.pack('ii', 5, math.floor(fiber.time())) .. house.getString('Test 5') .. house.getNullable(5.05, 'f'),
+    pickle.pack('ii', 6, math.floor(fiber.time())) .. house.getString('Test 6') .. house.getNullable(6.06, 'f')
+  })
+log.info('ClickHouse call result of query using RowBinary: %s', result)
 
 -- INSERT data in simplified form of MessagePack
 query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name) FORMAT MsgPack')
 status, result = query(
   {
-    house.compose({ 5, math.floor(fiber.time()), 'Test 5' }),
-    house.compose({ 6, math.floor(fiber.time()), 'Test 6' })
+    house.compose({ 7, math.floor(fiber.time()), 'Test 7' }),
+    house.compose({ 8, math.floor(fiber.time()), 'Test 8' })
   })
 
 -- SELECT data using non-parameterized query

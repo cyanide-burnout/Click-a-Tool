@@ -5,8 +5,10 @@
 
 ]]
 
+local bit     = require('bit')
 local ffi     = require('ffi')
 local zlib    = require('zlib')
+local pickle  = require('pickle')
 local msgpack = require('msgpack')
 local client  = require('http.client')
 
@@ -14,6 +16,8 @@ ffi.cdef([[
   char* mp_encode_float(char* data, float value);
   char* mp_encode_double(char* data, double value);
 ]])
+
+-- MessagePack
 
 local function getPackedFloat32(value)
   if type(value) == 'number' then
@@ -50,6 +54,28 @@ local function parsePackedData(data, columns, receiver, ...)
     if type(receiver) == 'function' then receiver(row, ...)          end
   end
 end
+
+-- RowBinary
+
+local function getLEB128(value)
+  if value <= 0x0000007f then return string.char(value) end
+  if value <= 0x00003fff then return pickle.pack('bb',   0x80 + bit.band(value, 0x7f), bit.rshift(value, 7)) end
+  if value <= 0x001fffff then return pickle.pack('bbb',  0x80 + bit.band(value, 0x7f), 0x80 + bit.band(bit.rshift(value, 7), 0x7f), bit.rshift(value, 14)) end
+  if value <= 0x0fffffff then return pickle.pack('bbbb', 0x80 + bit.band(value, 0x7f), 0x80 + bit.band(bit.rshift(value, 7), 0x7f), 0x80 + bit.band(bit.rshift(value, 14), 0x7f), bit.rshift(value, 21)) end
+  return pickle.pack('bbbbb', 0x80 + bit.band(value, 0x7f), 0x80 + bit.band(bit.rshift(value, 7), 0x7f), 0x80 + bit.band(bit.rshift(value, 14), 0x7f), 0x80 + bit.band(bit.rshift(value, 21), 0x7f), bit.rshift(value, 28))
+end
+
+local function getNativeString(value)
+  return getLEB128(value:len()) .. value
+end
+
+local function getNativeNullable(format, value, ...)
+  if type(format) == 'string' and type(value) == 'nil'    then return '\000' .. getNativeString(format)         end
+  if type(value)  == 'number' or  type(value) == 'string' then return '\000' .. pickle.pack(format, value, ...) end
+  return '\001'
+end
+
+-- Query
 
 local function getEscapedString(value)
   return tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end)
@@ -90,4 +116,16 @@ local function getNew(location, headers, query, delimiter)
   return object
 end
 
-return { getFloat32 = getPackedFloat32, getFloat64 = getPackedFloat64, compose = composePackedRow, parse = parsePackedData, new = getNew }
+return {
+  -- MessagePack
+  getFloat32   = getPackedFloat32,
+  getFloat64   = getPackedFloat64,
+  compose      = composePackedRow,
+  parse        = parsePackedData,
+  -- RowBinary
+  getLEB128    = getLEB128,
+  getString    = getNativeString,
+  getNullable  = getNativeNullable,
+  -- Query
+  new          = getNew
+}
