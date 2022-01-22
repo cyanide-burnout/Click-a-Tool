@@ -27,7 +27,7 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 * *getString(value)* - encode String of variable length
 * *getNullable([format,] value [, ...])* - encode Nullable value, where *format* uses Tarantool's *picle.pack()* format. If *format* is not passed, *value* will be interpreted as a string of variable length.
 * **Query**
-* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is an KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows
+* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows.
 * *query(table_of_rows)* - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
 * *query(raw_string)* - make an INSERT query and pass a raw data string
 * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
