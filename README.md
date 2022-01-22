@@ -29,7 +29,7 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
 * *getString(value)* - encode String of variable length
 * *getNullable([format,] value [, ...])* - encode Nullable value, where *format* uses Tarantool's *picle.pack()* format. If *format* is not passed, *value* will be interpreted as a string of variable length.
 * **Query**
-* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow). *delimiter* is a raw delimiter used to concatinate rows.
+* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
 * *query(table_of_rows)* - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
 * *query(raw_string)* - make an INSERT query and pass a raw data string
 * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
@@ -77,16 +77,16 @@ status, result = query(
 log.info('ClickHouse call result of query using MessagePack: %s', result)
 
 -- INSERT data in TabSeparated format
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated', '\n')
+query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated')
 status, result = query(
   {
-    '3\t2021-01-01 00:00:00\tTest 3\t3.03',
-    '4\t2021-01-01 00:00:00\tTest 5\t4.04'
+    '3\t2021-01-01 00:00:00\tTest 3\t3.03\n',
+    '4\t2021-01-01 00:00:00\tTest 5\t4.04\n'
   })
 log.info('ClickHouse call result of query using TabSeparated: %s', result)
 
 -- INSERT data in RowBinary format
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT RowBinary', '\n')
+query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT RowBinary')
 status, result = query(
   {
     pickle.pack('ii', 5, math.floor(fiber.time())) .. house.getString('Test 5') .. house.getNullable('f', 5.05),

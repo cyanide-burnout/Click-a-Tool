@@ -91,8 +91,8 @@ end
 local function makeCall(object, data)
   local location, body
   if not object.body then
-    if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, object.delimiter), 'finish') end
-    if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                                 end
+    if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, ''), 'finish') end
+    if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                   end
   end
   if object.body and type(data) == 'table' then
     local query = { }
@@ -105,7 +105,7 @@ local function makeCall(object, data)
   return true, result.body
 end
 
-local function getNew(location, headers, query, delimiter)
+local function getNew(location, headers, query)
   local object =
   {
     client  = client.new({ max_connections = 1 }),
@@ -113,7 +113,6 @@ local function getNew(location, headers, query, delimiter)
   }
   if query:upper():match('^INSERT ') then
     object.location  = location .. '?query=' .. getEscapedString(query)
-    object.delimiter = delimiter or ''
     object.options.headers['Content-Encoding'] = 'deflate'
   else
     object.location = location
@@ -125,15 +124,15 @@ end
 
 return {
   -- MessagePack
-  getFloat32   = getPackedFloat32,
-  getFloat64   = getPackedFloat64,
-  compose      = composePackedRow,
-  parse        = parsePackedData,
+  getFloat32  = getPackedFloat32,
+  getFloat64  = getPackedFloat64,
+  compose     = composePackedRow,
+  parse       = parsePackedData,
   -- RowBinary
-  getLEB128    = getLEB128,
-  getUUID      = getNativeUUID,
-  getString    = getNativeString,
-  getNullable  = getNativeNullable,
+  getLEB128   = getLEB128,
+  getUUID     = getNativeUUID,
+  getString   = getNativeString,
+  getNullable = getNativeNullable,
   -- Query
-  new          = getNew
+  new         = getNew
 }
