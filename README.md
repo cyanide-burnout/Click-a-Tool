@@ -19,7 +19,7 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 
 <<<<<<< HEAD
 * **MessagePack**
-* *house.getFloat32(value)** and **house.getFloat64(value)* - encode strictly formated float value in MessagePack
+* *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
 * *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
 * *house.parse(repoonse, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
 * *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
