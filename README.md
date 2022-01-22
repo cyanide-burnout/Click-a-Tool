@@ -17,7 +17,6 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 
 ## API
 
-<<<<<<< HEAD
 * **MessagePack**
 * *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
 * *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
@@ -33,17 +32,6 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 * *query(raw_string)* - make an INSERT query and pass a raw data string
 * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
 * *query()* - make a non-parameterized query
-=======
-* **house.getFloat32(value)** and **house.getFloat64(value)** - get strictly formated float value in MessagePack
-* **house.compose({ array, of, values, ... })** - convert set of field to MessagePack (compatible to ClickHouse)
-* **house.parse(repoonse, count_of_columns, table_to_save)** - parse MessagePack-formatted response into a table variable
-* **house.parse(repoonse, count_of_columns, callback [, arguments])** - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
-* **house.new(url, credentials, query [, delimiter])** - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow). *delimiter* is a delimiter used to concatinate rows
-* **query(table_of_rows)** - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
-* **query(raw_string)** - make an INSERT query and pass a raw data string
-* **query({ param1=value1, param2=value2, ... })** - make a parameterized query
-* **query()** - make a non-parameterized query
->>>>>>> be7ced8411c986a095b01cfd7bb14a64d8352c06
 
 You are able to create a query object at once and call it many times with differect parameters (data to insert or parameters to query).
 
