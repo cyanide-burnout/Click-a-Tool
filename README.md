@@ -3,13 +3,12 @@ A light ClickHouse client for Tarantool
 
 Artem Prilutskiy, 2022
 
-Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
-
+Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.\
 The library also can provide limited support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs. :)
 
 Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/
 
-About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756
+About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
 Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
 
 ## Requirements
