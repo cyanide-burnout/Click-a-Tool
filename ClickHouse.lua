@@ -17,6 +17,8 @@ ffi.cdef([[
   char* mp_encode_double(char* data, double value);
 ]])
 
+local UUID = ffi.typeof('struct tt_uuid')
+
 -- MessagePack
 
 local function getPackedFloat32(value)
@@ -66,7 +68,7 @@ local function getLEB128(value)
 end
 
 local function getNativeUUID(value)
-  if type(value) == 'cdata' then value = value:bin('b') end
+  if ffi.istype(UUID, value) then value = value:bin('b') end
   return value:sub(1, 8):reverse() .. value:sub(9, 16):reverse()
 end
 
