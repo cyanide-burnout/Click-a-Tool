@@ -24,6 +24,7 @@ About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickH
 * *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
 * **RowBinary**
 * *getLEB128(value)* - encode LEB128 unisgned integer value
+* *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
 * *getString(value)* - encode String of variable length
 * *getNullable([format,] value [, ...])* - encode Nullable value, where *format* uses Tarantool's *picle.pack()* format. If *format* is not passed, *value* will be interpreted as a string of variable length.
 * **Query**

@@ -65,6 +65,11 @@ local function getLEB128(value)
   return pickle.pack('bbbbb', 0x80 + bit.band(value, 0x7f), 0x80 + bit.band(bit.rshift(value, 7), 0x7f), 0x80 + bit.band(bit.rshift(value, 14), 0x7f), 0x80 + bit.band(bit.rshift(value, 21), 0x7f), bit.rshift(value, 28))
 end
 
+local function getNativeUUID(value)
+  if type(value) == 'cdata' then value = value:bin('b') end
+  return value:sub(1, 8):reverse() .. value:sub(9, 16):reverse()
+end
+
 local function getNativeString(value)
   return getLEB128(value:len()) .. value
 end
@@ -124,6 +129,7 @@ return {
   parse        = parsePackedData,
   -- RowBinary
   getLEB128    = getLEB128,
+  getUUID      = getNativeUUID,
   getString    = getNativeString,
   getNullable  = getNativeNullable,
   -- Query
