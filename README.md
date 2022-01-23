@@ -7,7 +7,8 @@ Client library uses HTTP interface of ClickHouse to interact with. It is more pr
 
 The library also can provide limited support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs. :)
 
-Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/
+Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
+And supported formats: https://clickhouse.com/docs/en/interfaces/formats/
 
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
 Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
