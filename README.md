@@ -27,7 +27,7 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
 * *getLEB128(value)* - encode LEB128 unisgned integer value
 * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
 * *getString(value)* - encode String of variable length
-* *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '\*' for a plain data or a Tarantool's *picle.pack()* format specifier or scalar types.
+* *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
 * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
 * *query(table_of_rows)* - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
