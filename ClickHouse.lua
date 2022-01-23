@@ -77,9 +77,10 @@ local function getNativeString(value)
 end
 
 local function getNativeNullable(format, value, ...)
-  if type(format) == 'string' and type(value) == 'nil'    then return '\000' .. getNativeString(format)         end
-  if type(value)  == 'number' or  type(value) == 'string' then return '\000' .. pickle.pack(format, value, ...) end
-  return '\001'
+  if value == nil or value == msgpack.NULL then return '\001'   end
+  if format == '*' then return '\000' .. value                  end
+  if format == '?' then return '\000' .. getNativeString(value) end
+  return '\000' .. pickle.pack(format, value, ...)
 end
 
 -- Query
