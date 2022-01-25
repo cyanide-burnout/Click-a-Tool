@@ -10,11 +10,13 @@ local ffi     = require('ffi')
 local zlib    = require('zlib')
 local pickle  = require('pickle')
 local msgpack = require('msgpack')
+local decimal = require('decimal')
 local client  = require('http.client')
 
 ffi.cdef([[
   char* mp_encode_float(char* data, float value);
   char* mp_encode_double(char* data, double value);
+  const decimal_t* decimal_to_int64(const decimal_t* decimal, int64_t* number);
 ]])
 
 local UUID = ffi.typeof('struct tt_uuid')
@@ -83,6 +85,15 @@ local function getNativeNullable(format, value, ...)
   return '\000' .. pickle.pack(format, value, ...)
 end
 
+local function getNativeDecimal64(value, scale)
+  if decimal.is_decimal(value) then
+    local value  = value * math.pow(10, scale)
+    local buffer = ffi.new('int64_t[1]')
+    ffi.C.decimal_to_int64(value, buffer)
+    return ffi.string(buffer, 8)
+  end
+end
+
 -- Query
 
 local function getEscapedString(value)
@@ -125,15 +136,16 @@ end
 
 return {
   -- MessagePack
-  getFloat32  = getPackedFloat32,
-  getFloat64  = getPackedFloat64,
-  compose     = composePackedRow,
-  parse       = parsePackedData,
+  getFloat32   = getPackedFloat32,
+  getFloat64   = getPackedFloat64,
+  compose      = composePackedRow,
+  parse        = parsePackedData,
   -- RowBinary
-  getLEB128   = getLEB128,
-  getUUID     = getNativeUUID,
-  getString   = getNativeString,
-  getNullable = getNativeNullable,
+  getLEB128    = getLEB128,
+  getUUID      = getNativeUUID,
+  getString    = getNativeString,
+  getNullable  = getNativeNullable,
+  getDecimal64 = getNativeDecimal64,
   -- Query
-  new         = getNew
+  new          = getNew
 }
