@@ -20,22 +20,22 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
 ## API
 
 * **MessagePack**
-* *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
-* *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
-* *house.parse(repoonse, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
-* *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
+** *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
+** *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
+** *house.parse(repoonse, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
+** *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
 * **RowBinary**
-* *getLEB128(value)* - encode LEB128 unisgned integer value
-* *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
-* *getString(value)* - encode String of variable length
-* *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal64. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64
-* *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
+** *getLEB128(value)* - encode LEB128 unisgned integer value
+** *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
+** *getString(value)* - encode String of variable length
+** *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal64. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64
+** *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
-* *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
-* *query(table_of_rows)* - make an INSERT query and pass a set of rows in proper format (see example bellow)
-* *query(raw_string)* - make an INSERT query and pass a raw data string
-* *query({ param1=value1, param2=value2, ... })* - make a parameterized query
-* *query()* - make a non-parameterized query
+** *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
+** *query(table_of_rows)* - make an INSERT query and pass a set of rows in proper format (see example bellow)
+** *query(raw_string)* - make an INSERT query and pass a raw data string
+** *query({ param1=value1, param2=value2, ... })* - make a parameterized query
+** *query()* - make a non-parameterized query
 
 You are able to create a query object at once and call it many times with differect parameters (data to insert or parameters to query).
 
