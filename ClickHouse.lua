@@ -78,20 +78,21 @@ local function getNativeString(value)
   return getLEB128(value:len()) .. value
 end
 
-local function getNativeNullable(format, value, ...)
-  if value == nil or value == msgpack.NULL then return '\001'   end
-  if format == '*' then return '\000' .. value                  end
-  if format == '?' then return '\000' .. getNativeString(value) end
-  return '\000' .. pickle.pack(format, value, ...)
-end
-
-local function getNativeDecimal64(value, scale)
+local function getNativeDecimal(value, scale, size)
   if decimal.is_decimal(value) then
     local value  = value * math.pow(10, scale)
     local buffer = ffi.new('int64_t[1]')
     ffi.C.decimal_to_int64(value, buffer)
-    return ffi.string(buffer, 8)
+    return ffi.string(buffer, size)
   end
+end
+
+local function getNativeNullable(format, value, ...)
+  if value == nil or value == msgpack.NULL then return '\001'         end
+  if format == '*' then return '\000' .. value                        end
+  if format == '?' then return '\000' .. getNativeString(value)       end
+  if format == '!' then return '\000' .. getNativeDecimal(value, ...) end
+  return '\000' .. pickle.pack(format, value, ...)
 end
 
 -- Query
@@ -144,8 +145,8 @@ return {
   getLEB128    = getLEB128,
   getUUID      = getNativeUUID,
   getString    = getNativeString,
+  getDecimal   = getNativeDecimal,
   getNullable  = getNativeNullable,
-  getDecimal64 = getNativeDecimal64,
   -- Query
   new          = getNew
 }
