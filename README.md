@@ -5,7 +5,10 @@ Artem Prilutskiy, 2022
 
 Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
 
-The library also can provide limited support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs. :)
+The library also provides support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs or Decimals, because in case of RowBinary ClickHouse doesn't do type check.
+
+Typical use of the library is a batch propagation of data that is accomulated in Tarantool to ClickHouse. Due to lack of supported MessagePack types we moved our code to use RowBinary. SELECT queries can use MessagePack by using converting functions on ClickHouse side.
+
 
 Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
 And supported formats: https://clickhouse.com/docs/en/interfaces/formats/
@@ -28,7 +31,7 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
   * *getLEB128(value)* - encode LEB128 unisgned integer value
   * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
   * *getString(value)* - encode String of variable length
-  * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal64. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64
+  * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal64. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64. At this moment this function is suitable only when Tarantool runs on little-endian architectures.
   * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
   * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
