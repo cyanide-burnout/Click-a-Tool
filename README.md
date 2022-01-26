@@ -32,7 +32,7 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
   * *getLEB128(value)* - encode LEB128 unisgned integer value
   * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
   * *getString(value)* - encode String of variable length
-  * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64. At this moment this function is suitable only when Tarantool runs on little-endian architectures.
+  * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64. At this moment this function is suitable only when Tarantool runs on little-endian architectures (i386, amd64, aarch64 :)).
   * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
   * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
