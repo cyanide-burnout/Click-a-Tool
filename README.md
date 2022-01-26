@@ -32,7 +32,7 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
 * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
 * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
-* *query(table_of_rows)* - make an INSERT query and pass a set of rows formated in proper format (see example bellow)
+* *query(table_of_rows)* - make an INSERT query and pass a set of rows in proper format (see example bellow)
 * *query(raw_string)* - make an INSERT query and pass a raw data string
 * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
 * *query()* - make a non-parameterized query
