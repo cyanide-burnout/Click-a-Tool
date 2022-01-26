@@ -18,7 +18,8 @@ Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/Cli
 
 ## Requirements
 
-* lua-zlib
+* Tarantool 2.x
+* lua-zlib (can be installed from the standard Linux distribuion)
 
 ## API
 
