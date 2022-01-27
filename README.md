@@ -21,7 +21,7 @@ Please note, the library written in Lua and intensively uses [Tarantool Lua libr
 ## Requirements
 
 * Tarantool 2.x
-* lua-zlib (can be installed from the standard Linux distribuion)
+* lua-zlib (can be installed from the standard Linux distribution)
 
 ## API
 
