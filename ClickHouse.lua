@@ -125,11 +125,12 @@ local function getNew(location, headers, query)
     options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 }
   }
   if query:upper():match('^INSERT ') then
-    object.location  = location .. '?query=' .. getEscapedString(query)
+    object.location = location .. '?query=' .. getEscapedString(query)
     object.options.headers['Content-Encoding'] = 'deflate'
   else
     object.location = location
-    object.body     = query
+    object.body     = zlib.deflate(9, 15)(query, 'finish')
+    object.options.headers['Content-Encoding'] = 'deflate'
   end
   setmetatable(object, { __call = makeCall })
   return object
