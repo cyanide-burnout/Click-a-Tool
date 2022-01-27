@@ -43,7 +43,7 @@ Please note, the library written in Lua and intensively uses [Tarantool Lua libr
   * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
   * *query()* - make a non-parameterized query
 
-You are able to create a query object at once and call it many times with differect parameters (data to insert or parameters to query).
+You are able to create a query object at once and call it many times with different parameters (data to insert or parameters to query).
 
 ## Usage
 
