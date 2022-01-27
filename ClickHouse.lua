@@ -101,11 +101,15 @@ local function getEscapedString(value)
   return tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end)
 end
 
+local function getCompressedData(data)
+  return zlib.deflate(9, 15)(data, 'finish')
+end
+
 local function makeCall(object, data)
   local location, body
   if not object.body then
-    if type(data) == 'table'  then body = zlib.deflate(9, 15)(table.concat(data, ''), 'finish') end
-    if type(data) == 'string' then body = zlib.deflate(9, 15)(data, 'finish')                   end
+    if type(data) == 'table'  then body = getCompressedData(table.concat(data, '')) end
+    if type(data) == 'string' then body = getCompressedData(data)                   end
   end
   if object.body and type(data) == 'table' then
     local query = { }
@@ -124,13 +128,12 @@ local function getNew(location, headers, query)
     client  = client.new({ max_connections = 1 }),
     options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 }
   }
+  object.options.headers['Content-Encoding'] = 'deflate'
   if query:upper():match('^INSERT ') then
     object.location = location .. '?query=' .. getEscapedString(query)
-    object.options.headers['Content-Encoding'] = 'deflate'
   else
     object.location = location
-    object.body     = zlib.deflate(9, 15)(query, 'finish')
-    object.options.headers['Content-Encoding'] = 'deflate'
+    object.body     = getCompressedData(query)
   end
   setmetatable(object, { __call = makeCall })
   return object
