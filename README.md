@@ -7,7 +7,7 @@ Client library uses HTTP interface of ClickHouse to interact with. It is more pr
 
 The library also provides support of RowBinary. Most of scalar types can be encoded by the [pickle library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/), that is why these are not implemeted here. Please read [RowBinary format description](https://clickhouse.com/docs/en/interfaces/formats/#rowbinary) for details. You can use when you really understand what are you doing or have a need such as for example to pass UUIDs or Decimals, because in case of RowBinary ClickHouse doesn't do type check.
 
-Typical use of the library is a batch propagation of data that is accomulated in Tarantool to ClickHouse. Due to lack of supported MessagePack types we moved our code to use RowBinary. SELECT queries can use MessagePack by using converting functions on ClickHouse side.
+Typical use of the library is a batch propagation of data that is accomulated in Tarantool to ClickHouse. Due to lack of supported MessagePack types we moved our code to use RowBinary. SELECT queries can use MessagePack with converting functions for unsupported types on ClickHouse side.
 
 
 Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
