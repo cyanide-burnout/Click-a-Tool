@@ -3,9 +3,9 @@ A light ClickHouse client for Tarantool
 
 Artem Prilutskiy, 2022
 
-Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. The library uses zlib compression. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format.
+Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format. Most of [types](https://clickhouse.com/docs/en/interfaces/formats/#msgpack) can be encoded directly by [Tarantool's msgpack library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/msgpack/).
 
-The library also provides support of RowBinary. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs or Decimals, because in case of RowBinary ClickHouse doesn't do type check.
+The library also provides support of RowBinary. Most of scalar types can be encoded by the [pickle library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/), that is why these are not implemeted by the library. Please read [RowBinary format description](https://clickhouse.com/docs/en/interfaces/formats/#rowbinary) for details. You can use if when you really understand what are you doing or have a need such as for example to pass UUIDs or Decimals, because in case of RowBinary ClickHouse doesn't do type check.
 
 Typical use of the library is a batch propagation of data that is accomulated in Tarantool to ClickHouse. Due to lack of supported MessagePack types we moved our code to use RowBinary. SELECT queries can use MessagePack by using converting functions on ClickHouse side.
 
@@ -16,7 +16,7 @@ And supported formats: https://clickhouse.com/docs/en/interfaces/formats/
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
 Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
 
-Please note, the library written in Lua and intensively uses Tarantool Lua libraries (pickle, messagepack, decimal, http.client) and C functions via [FFI](https://luajit.org/ext_ffi.html). It cannot run in a pure Lua environment.
+Please note, the library written in Lua and intensively uses Tarantool Lua libraries (pickle, msgpack, decimal, http.client) and C functions via [FFI](https://luajit.org/ext_ffi.html). It cannot run in a pure Lua environment.
 
 ## Requirements
 
