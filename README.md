@@ -16,6 +16,8 @@ And supported formats: https://clickhouse.com/docs/en/interfaces/formats/
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
 Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
 
+Please note, the library written in Lua and intensively uses Tarantool Lua libraries (pickle, messagepack, decimal, http.client) and C functions via [FFI](https://luajit.org/ext_ffi.html). It cannot run in a pure Lua environment.
+
 ## Requirements
 
 * Tarantool 2.x
