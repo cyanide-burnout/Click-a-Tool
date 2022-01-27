@@ -128,13 +128,13 @@ local function getNew(location, headers, query)
     client  = client.new({ max_connections = 1 }),
     options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 }
   }
-  object.options.headers['Content-Encoding'] = 'deflate'
   if query:upper():match('^INSERT ') then
     object.location = location .. '?query=' .. getEscapedString(query)
   else
     object.location = location
     object.body     = getCompressedData(query)
   end
+  headers['Content-Encoding'] = 'deflate'
   setmetatable(object, { __call = makeCall })
   return object
 end
