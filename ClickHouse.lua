@@ -88,7 +88,7 @@ local function getNativeDecimal(value, scale, size)
 end
 
 local function getNativeNullable(format, value, ...)
-  if value == nil or value == msgpack.NULL then return '\001'         end
+  if value  == nil then return '\001'                                 end
   if format == '*' then return '\000' .. value                        end
   if format == '?' then return '\000' .. getNativeString(value)       end
   if format == '!' then return '\000' .. getNativeDecimal(value, ...) end
