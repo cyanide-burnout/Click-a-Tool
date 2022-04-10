@@ -28,8 +28,8 @@ Please note, the library written in Lua and intensively uses [Tarantool Lua libr
 * **MessagePack**
   * *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
   * *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
-  * *house.parse(repoonse, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
-  * *house.parse(repoonse, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
+  * *house.parse(response, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
+  * *house.parse(response, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
 * **RowBinary**
   * *getLEB128(value)* - encode LEB128 unisgned integer value
   * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
