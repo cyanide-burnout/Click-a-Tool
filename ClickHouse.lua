@@ -162,7 +162,7 @@ return {
   getLEB128   = getLEB128,
   getUUID     = getNativeUUID,
   getString   = getNativeString,
-  getDecima   = getNativeDecimal,
+  getDecimal  = getNativeDecimal,
   getDateTime = getNativeDateTime,
   getNullable = getNativeNullable,
   -- Query
