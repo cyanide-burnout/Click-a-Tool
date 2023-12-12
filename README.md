@@ -1,7 +1,7 @@
 # Click-a-Tool
 A light ClickHouse client for Tarantool
 
-Artem Prilutskiy, 2022
+Artem Prilutskiy, 2022-2023
 
 Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format. Most of [types](https://clickhouse.com/docs/en/interfaces/formats/#msgpack) can be encoded directly by [Tarantool's msgpack library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/msgpack/).
 
