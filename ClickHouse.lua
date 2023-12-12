@@ -1,17 +1,18 @@
 --[[
 
   Light ClickHouse client for Tarantool
-  Artem Prilutskiy, 2022
+  Artem Prilutskiy, 2022-2023
 
 ]]
 
-local bit     = require('bit')
-local ffi     = require('ffi')
-local zlib    = require('zlib')
-local pickle  = require('pickle')
-local msgpack = require('msgpack')
-local decimal = require('decimal')
-local client  = require('http.client')
+local bit      = require('bit')
+local ffi      = require('ffi')
+local zlib     = require('zlib')
+local pickle   = require('pickle')
+local msgpack  = require('msgpack')
+local decimal  = require('decimal')
+local datetime = require('datetime')
+local client   = require('http.client')
 
 ffi.cdef([[
   char* mp_encode_float(char* data, float value);
@@ -87,11 +88,22 @@ local function getNativeDecimal(value, scale, size)
   end
 end
 
+local function getNativeDateTime(value, size, scale)
+  if datetime.is_datetime(value) then
+    if size == 4 return pickle.pack('i', value.epoch)
+    local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
+    local buffer = ffi.new('int64_t[1]')
+    ffi.C.decimal_to_int64(value, buffer)
+    return ffi.string(buffer, size)
+  end
+end
+
 local function getNativeNullable(format, value, ...)
-  if value  == nil then return '\001'                                 end
-  if format == '*' then return '\000' .. value                        end
-  if format == '?' then return '\000' .. getNativeString(value)       end
-  if format == '!' then return '\000' .. getNativeDecimal(value, ...) end
+  if value  == nil then return '\001'                                  end
+  if format == '*' then return '\000' .. value                         end
+  if format == '?' then return '\000' .. getNativeString(value)        end
+  if format == '!' then return '\000' .. getNativeDecimal(value, ...)  end
+  if format == '+' then return '\000' .. getNativeDateTime(value, ...) end
   return '\000' .. pickle.pack(format, value, ...)
 end
 
@@ -141,16 +153,17 @@ end
 
 return {
   -- MessagePack
-  getFloat32   = getPackedFloat32,
-  getFloat64   = getPackedFloat64,
-  compose      = composePackedRow,
-  parse        = parsePackedData,
+  getFloat32  = getPackedFloat32,
+  getFloat64  = getPackedFloat64,
+  compose     = composePackedRow,
+  parse       = parsePackedData,
   -- RowBinary
-  getLEB128    = getLEB128,
-  getUUID      = getNativeUUID,
-  getString    = getNativeString,
-  getDecimal   = getNativeDecimal,
-  getNullable  = getNativeNullable,
+  getLEB128   = getLEB128,
+  getUUID     = getNativeUUID,
+  getString   = getNativeString,
+  getDecima   = getNativeDecimal,
+  getDateTime = getNativeDateTime,
+  getNullable = getNativeNullable,
   -- Query
-  new          = getNew
+  new         = getNew
 }
