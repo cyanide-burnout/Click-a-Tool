@@ -91,6 +91,7 @@ end
 local function getNativeDateTime(value, size, scale)
   if datetime.is_datetime(value) then
     if size == 4 return pickle.pack('i', value.epoch)
+    local scale  = scale or 0
     local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
     local buffer = ffi.new('int64_t[1]')
     ffi.C.decimal_to_int64(value, buffer)
