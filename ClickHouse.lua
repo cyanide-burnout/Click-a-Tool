@@ -8,6 +8,7 @@
 local bit      = require('bit')
 local ffi      = require('ffi')
 local zlib     = require('zlib')
+local uuid     = require('uuid')
 local pickle   = require('pickle')
 local msgpack  = require('msgpack')
 local decimal  = require('decimal')
@@ -19,8 +20,6 @@ ffi.cdef([[
   char* mp_encode_double(char* data, double value);
   const decimal_t* decimal_to_int64(const decimal_t* decimal, int64_t* number);
 ]])
-
-local UUID = ffi.typeof('struct tt_uuid')
 
 -- MessagePack
 
@@ -71,7 +70,7 @@ local function getLEB128(value)
 end
 
 local function getNativeUUID(value)
-  if ffi.istype(UUID, value) then value = value:bin('b') end
+  if uuid.is_uuid(value) then value = value:bin('b') end
   return value:sub(1, 8):reverse() .. value:sub(9, 16):reverse()
 end
 
@@ -88,23 +87,21 @@ local function getNativeDecimal(value, scale, size)
   end
 end
 
-local function getNativeDateTime(value, size, scale)
+local function getNativeDateTime64(value, scale)
   if datetime.is_datetime(value) then
-    if size == 4 return pickle.pack('i', value.epoch)
-    local scale  = scale or 0
     local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
     local buffer = ffi.new('int64_t[1]')
     ffi.C.decimal_to_int64(value, buffer)
-    return ffi.string(buffer, size)
+    return ffi.string(buffer)
   end
 end
 
 local function getNativeNullable(format, value, ...)
-  if value  == nil then return '\001'                                  end
-  if format == '*' then return '\000' .. value                         end
-  if format == '?' then return '\000' .. getNativeString(value)        end
-  if format == '!' then return '\000' .. getNativeDecimal(value, ...)  end
-  if format == '+' then return '\000' .. getNativeDateTime(value, ...) end
+  if value  == nil then return '\001'                                    end
+  if format == '*' then return '\000' .. value                           end
+  if format == '?' then return '\000' .. getNativeString(value)          end
+  if format == '!' then return '\000' .. getNativeDecimal(value, ...)    end
+  if format == '+' then return '\000' .. getNativeDateTime64(value, ...) end
   return '\000' .. pickle.pack(format, value, ...)
 end
 
@@ -154,17 +151,17 @@ end
 
 return {
   -- MessagePack
-  getFloat32  = getPackedFloat32,
-  getFloat64  = getPackedFloat64,
-  compose     = composePackedRow,
-  parse       = parsePackedData,
+  getFloat32    = getPackedFloat32,
+  getFloat64    = getPackedFloat64,
+  compose       = composePackedRow,
+  parse         = parsePackedData,
   -- RowBinary
-  getLEB128   = getLEB128,
-  getUUID     = getNativeUUID,
-  getString   = getNativeString,
-  getDecimal  = getNativeDecimal,
-  getDateTime = getNativeDateTime,
-  getNullable = getNativeNullable,
+  getLEB128     = getLEB128,
+  getUUID       = getNativeUUID,
+  getString     = getNativeString,
+  getDecimal    = getNativeDecimal,
+  getDateTime64 = getNativeDateTime64,
+  getNullable   = getNativeNullable,
   -- Query
-  new         = getNew
+  new           = getNew
 }
