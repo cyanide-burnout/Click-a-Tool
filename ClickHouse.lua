@@ -92,7 +92,7 @@ local function getNativeDateTime64(value, scale)
     local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
     local buffer = ffi.new('int64_t[1]')
     ffi.C.decimal_to_int64(value, buffer)
-    return ffi.string(buffer)
+    return ffi.string(buffer, 8)
   end
 end
 
