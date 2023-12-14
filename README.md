@@ -35,7 +35,7 @@ Please note, the library written in Lua and intensively uses [Tarantool Lua libr
   * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
   * *getString(value)* - encode String of variable length
   * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64. At this moment this function is suitable only when Tarantool runs on little-endian architectures (i386, amd64, aarch64 :)).
-  * *getDateTime(value, size[, scale])* - encode Taranool's datetime as ClickHouse's DateTime or DateTime64. *size* is a target size in bytes, 4 for DateTime, 8 for DateTime64.
+  * *getDateTime64(value, scale)* - encode Taranool's datetime as ClickHouse's DateTime64.
   * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '+' for DateTime (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
   * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
