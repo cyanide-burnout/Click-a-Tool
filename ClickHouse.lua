@@ -1,7 +1,7 @@
 --[[
 
   Light ClickHouse client for Tarantool
-  Artem Prilutskiy, 2022-2023
+  Artem Prilutskiy, 2022-2024
 
 ]]
 
@@ -18,7 +18,7 @@ local client   = require('http.client')
 ffi.cdef([[
   char* mp_encode_float(char* data, float value);
   char* mp_encode_double(char* data, double value);
-  const decimal_t* decimal_to_int64(const decimal_t* decimal, int64_t* number);
+  const decimal_t* box_decimal_to_int64(const decimal_t* decimal, int64_t* number);
 ]])
 
 -- MessagePack
@@ -82,7 +82,7 @@ local function getNativeDecimal(value, scale, size)
   if decimal.is_decimal(value) then
     local value  = value * math.pow(10, scale)
     local buffer = ffi.new('int64_t[1]')
-    ffi.C.decimal_to_int64(value, buffer)
+    ffi.C.box_decimal_to_int64(value, buffer)
     return ffi.string(buffer, size)
   end
 end
@@ -91,7 +91,7 @@ local function getNativeDateTime64(value, scale)
   if datetime.is_datetime(value) then
     local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
     local buffer = ffi.new('int64_t[1]')
-    ffi.C.decimal_to_int64(value, buffer)
+    ffi.C.box_decimal_to_int64(value, buffer)
     return ffi.string(buffer, 8)
   end
 end
@@ -99,6 +99,7 @@ end
 local function getNativeNullable(format, value, ...)
   if value  == nil then return '\001'                                    end
   if format == '*' then return '\000' .. value                           end
+  if format == '-' then return '\000' .. getNativeUUID(value)            end
   if format == '?' then return '\000' .. getNativeString(value)          end
   if format == '!' then return '\000' .. getNativeDecimal(value, ...)    end
   if format == '+' then return '\000' .. getNativeDateTime64(value, ...) end
