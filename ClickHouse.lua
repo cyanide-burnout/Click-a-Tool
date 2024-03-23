@@ -18,7 +18,7 @@ local client   = require('http.client')
 ffi.cdef([[
   char* mp_encode_float(char* data, float value);
   char* mp_encode_double(char* data, double value);
-  const box_decimal_t* box_decimal_to_int64(const box_decimal_t* decimal, int64_t* number);
+  const decimal_t* box_decimal_to_int64(const decimal_t* decimal, int64_t* number);
 ]])
 
 -- MessagePack
