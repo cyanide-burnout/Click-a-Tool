@@ -128,8 +128,8 @@ local function makeCall(object, data)
     location = object.location .. '?' .. table.concat(query, '&')
   end
   local status, result = pcall(object.client.post, object.client, location or object.location, object.body or body, object.options)
-  if not status           then return false, result      end
-  if result.status ~= 200 then return false, result.body end
+  if not status or type(result) ~= 'table' or not result['status'] then return false, result      end
+  if result.status ~= 200                                          then return false, result.body end
   return true, result.body
 end
 
