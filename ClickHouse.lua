@@ -137,7 +137,7 @@ local function getNew(location, headers, query)
   local object =
   {
     client  = client.new({ max_connections = 1 }),
-    options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5 }
+    options = { headers = headers, accept_encoding = 'deflate' }
   }
   if query:upper():match('^INSERT ') then
     object.location = location .. '?query=' .. getEscapedString(query)
