@@ -133,11 +133,11 @@ local function makeCall(object, data)
   return true, result.body
 end
 
-local function getNew(location, headers, query)
+local function getNew(location, headers, query, timeout)
   local object =
   {
     client  = client.new({ max_connections = 1 }),
-    options = { headers = headers, accept_encoding = 'deflate' }
+    options = { headers = headers, accept_encoding = 'deflate', timeout = timeout or 30 }
   }
   if query:upper():match('^INSERT ') then
     object.location = location .. '?query=' .. getEscapedString(query)

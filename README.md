@@ -38,7 +38,7 @@ Please note, the library written in Lua and intensively uses [Tarantool Lua libr
   * *getDateTime64(value, scale)* - encode Taranool's datetime as ClickHouse's DateTime64.
   * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '+' for DateTime (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
 * **Query**
-  * *house.new(url, credentials, query [, delimiter])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow).
+  * *house.new(url, credentials, query [, timeout])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow). *timeout* is the HTTP request timeout in seconds and defaults to 30.
   * *query(table_of_rows)* - make an INSERT query and pass a set of rows in proper format (see examples bellow)
   * *query(raw_string)* - make an INSERT query and pass a raw data string
   * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
