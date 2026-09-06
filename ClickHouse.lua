@@ -128,8 +128,13 @@ local function makeCall(object, data)
     location = object.location .. '?' .. table.concat(query, '&')
   end
   local status, result = pcall(object.client.post, object.client, location or object.location, object.body or body, object.options)
-  if not status or type(result) ~= 'table' or not result['status'] then return false, result      end
-  if result.status ~= 200                                          then return false, result.body end
+  if not status then return false, result or 'HTTP request failed without error details' end
+  if type(result) ~= 'table' or not result.status then return false, 'HTTP request returned no response' end
+  if result.status ~= 200 then
+    local reason = result.body or result.errmsg or result.reason
+    if reason then return false, string.format('HTTP %s: %s', result.status, reason) end
+    return false, string.format('HTTP %s', result.status)
+  end
   return true, result.body
 end
 
@@ -137,7 +142,7 @@ local function getNew(location, headers, query, timeout)
   local object =
   {
     client  = client.new({ max_connections = 1 }),
-    options = { headers = headers, accept_encoding = 'deflate', timeout = timeout or 30 }
+    options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
   }
   if query:upper():match('^INSERT ') then
     object.location = location .. '?query=' .. getEscapedString(query)
