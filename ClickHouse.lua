@@ -1,7 +1,7 @@
 --[[
 
   Light ClickHouse client for Tarantool
-  Artem Prilutskiy, 2022-2024
+  Artem Prilutskiy, 2022-2026
 
 ]]
 
