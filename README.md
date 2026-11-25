@@ -1,150 +1,377 @@
 # Click-a-Tool
+
 A light ClickHouse client for Tarantool
 
 Artem Prilutskiy, 2022-2026
 
-The library talks to ClickHouse over its [HTTP interface](https://clickhouse.com/docs/en/interfaces/http/). Requests and data go compressed with deflate. MessagePack is the preferable format to pass data in. Since ClickHouse takes data in a strict form, there are helper functions to encode some fields that way. Most of the [types](https://clickhouse.com/docs/en/interfaces/formats/#msgpack) can be encoded directly by [the msgpack library of Tarantool](https://www.tarantool.io/en/doc/latest/reference/reference_lua/msgpack/).
+Click-a-Tool is one Lua module, `ClickHouse`, that sends queries and data from Tarantool to ClickHouse over the [HTTP interface](https://clickhouse.com/docs/en/interfaces/http/) of ClickHouse. It works in fibers: requests go through `http.client` of Tarantool and do not block the event loop. Queries and data are compressed with deflate.
 
-The library also supports RowBinary. Most of the scalar types can be encoded by [the pickle library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/), that is why they are not implemented here. Please read [the description of RowBinary](https://clickhouse.com/docs/en/interfaces/formats/#rowbinary) for details. Use it when you really understand what you are doing, or when you need it, for example to pass UUIDs or Decimals: with RowBinary ClickHouse does not check the types.
+The typical task is a batch export: Tarantool accumulates records (calls, sessions, events), and a fiber sends them to ClickHouse every few seconds in one INSERT. Helper functions encode values in the strict forms that ClickHouse expects from MessagePack and RowBinary, the binary formats it takes without parsing text.
 
-A typical use of the library is a batch propagation of data accumulated in Tarantool to ClickHouse. Because of the MessagePack types ClickHouse lacks, our code moved to RowBinary. SELECT queries can use MessagePack with conversion functions on the side of ClickHouse for the types it does not support.
+## Contents
 
-Please read the details of the HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
-And the supported formats: https://clickhouse.com/docs/en/interfaces/formats/
-
-About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
-Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
-
-Please note, the library is written in Lua and uses [the Lua libraries of Tarantool](https://www.tarantool.io/en/doc/latest/reference/reference_lua/) (pickle, msgpack, decimal, datetime, http.client) and C functions of Tarantool via [FFI](https://luajit.org/ext_ffi.html) intensively. It cannot run in a pure Lua environment.
+* [Requirements](#requirements)
+* [Installation](#installation)
+* [Quick start](#quick-start)
+* [Queries](#queries)
+* [Which format](#which-format)
+* [MessagePack](#messagepack)
+* [RowBinary](#rowbinary)
+* [Reading results](#reading-results)
+* [A batch export from a space](#a-batch-export-from-a-space)
+* [API](#api)
+* [Limitations](#limitations)
+* [Tests](#tests)
 
 ## Requirements
 
-* Tarantool 2.11 or later (datetime and the C API of decimal)
-* lua-zlib (`lua-zlib` in Debian and Ubuntu, or the rock of the same name)
+* Tarantool 3.x
+* lua-zlib: the `lua-zlib` package of Debian and Ubuntu, or the rock of the same name
+* A little-endian machine: amd64 or aarch64
+* ClickHouse with the HTTP interface (port 8123 by default); the tests run against ClickHouse 25.3
+
+The module uses the Lua libraries of Tarantool (`http.client`, `msgpack`, `pickle`, `decimal`, `datetime`, `uuid`) and a C function of Tarantool through [FFI](https://luajit.org/ext_ffi.html), so it does not run in plain Lua.
 
 ## Installation
 
-Copy `ClickHouse.lua` to a directory of `package.path`, or install the rock:
+Copy `ClickHouse.lua` to a directory of `package.path` of your application and install lua-zlib:
 
 ```sh
-tt rocks install --server=https://luarocks.org click-a-tool --dev
+apt-get install lua-zlib
 ```
 
-or from a clone of the repository:
+or install the rock with its dependency from a clone of the repository:
 
 ```sh
 tt rocks make click-a-tool-scm-1.rockspec
 ```
 
-## API
+Then:
 
-* **MessagePack**
-  * *house.getFloat32(value)* and *house.getFloat64(value)* - encode a float value in the strict form of MessagePack, `nil` becomes NULL
-  * *house.compose({ array, of, values, ... })* - encode a set of fields in MessagePack (compatible with ClickHouse)
-  * *house.parse(response, count_of_columns, table_to_save)* - parse a response in MessagePack into a table
-  * *house.parse(response, count_of_columns, callback [, arguments])* - parse a response in MessagePack and call *callback(row [, arguments])* on each row
-* **RowBinary**
-  * *house.getLEB128(value)* - encode an unsigned integer value in LEB128
-  * *house.getUUID(value)* - encode a UUID. *value* is a string with a binary UUID in network byte order or a *uuid* object of Tarantool.
-  * *house.getString(value)* - encode a String of variable length
-  * *house.getDecimal(value, scale, size)* - encode a decimal of Tarantool as a Decimal of ClickHouse. *size* is the size in bytes, 4 for Decimal32, 8 for Decimal64. Digits beyond *scale* are floored. For now the function is suitable only when Tarantool runs on little-endian architectures (i386, amd64, aarch64 :)).
-  * *house.getDateTime64(value, scale)* - encode a datetime of Tarantool as a DateTime64 of ClickHouse
-  * *house.getNullable(format, value [, ...])* - encode a Nullable value, `nil` and `box.NULL` become NULL. *format* is '?' for a String of variable length, '-' for a UUID, '!' for a Decimal (see above), '+' for a DateTime64 (see above), '\*' for data encoded already, or a format of *pickle.pack()* for scalar types.
-* **Query**
-  * *house.new(url, headers, query [, timeout])* - create a new query object. *headers* is a key-value set of HTTP headers, the credentials among them (see the examples below); the table is copied. *timeout* is the timeout of an HTTP request in seconds, 30 by default. A *query* that starts with INSERT sends its data in the body, any other query is sent in the body itself.
-  * *query(table_of_rows)* - make an INSERT query and pass a set of rows in the proper format (see the examples below)
-  * *query(raw_string)* - make an INSERT query and pass a raw data string
-  * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
-  * *query()* - make a non-parameterized query
+```lua
+local house = require('ClickHouse')
+```
 
-  Each call returns *true, body of the response* or *false, error*, the error is `HTTP <status>: <message of ClickHouse>` when ClickHouse answers.
+## Quick start
 
-You can create a query object once and call it many times with different parameters (data to insert or parameters of a query).
-
-## Usage
-
-```SQL
+```sql
 CREATE TABLE SomeData
 (
-  `ID`       UInt32,
-  `Date`     DateTime,
-  `Name`     String,
-  `Quality`  Nullable(Float32)
+  `ID`      UInt32,
+  `Date`    DateTime,
+  `Name`    String,
+  `Quality` Nullable(Float32)
 )
 ENGINE = MergeTree()
 ORDER BY `Date`;
 ```
 
-```Lua
-local log     = require('log')
-local fiber   = require('fiber')
-local pickle  = require('pickle')
-local msgpack = require('msgpack')
-local house   = require('ClickHouse')
+```lua
+local log    = require('log')
+local fiber  = require('fiber')
+local pickle = require('pickle')
+local house  = require('ClickHouse')
 
-local credentials =
+local headers =
 {
   ['X-ClickHouse-User'    ] = 'user',
   ['X-ClickHouse-Key'     ] = 'password',
   ['X-ClickHouse-Database'] = 'database'
 }
 
-local query, status, result, list
+local insert = house.new('http://localhost:8123/', headers,
+  'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT RowBinary')
 
--- INSERT data in strict form of MessagePack
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT MsgPack')
-status, result = query(
+local now = math.floor(fiber.time())
+local status, result = insert(
   {
-    msgpack.encode(1) .. msgpack.encode(math.floor(fiber.time())) .. msgpack.encode('Test 1') .. house.getFloat32(1.01),
-    msgpack.encode(2) .. msgpack.encode(math.floor(fiber.time())) .. msgpack.encode('Test 2') .. house.getFloat32(2.02)
-  })
-log.info('ClickHouse call result of query using MessagePack: %s', result)
-
--- INSERT data in TabSeparated format
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT TabSeparated')
-status, result = query(
-  {
-    '3\t2021-01-01 00:00:00\tTest 3\t3.03\n',
-    '4\t2021-01-01 00:00:00\tTest 5\t4.04\n'
-  })
-log.info('ClickHouse call result of query using TabSeparated: %s', result)
-
--- INSERT data in RowBinary format
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT RowBinary')
-status, result = query(
-  {
-    pickle.pack('ii', 5, math.floor(fiber.time())) .. house.getString('Test 5') .. house.getNullable('f', 5.05),
-    pickle.pack('ii', 6, math.floor(fiber.time())) .. house.getString('Test 6') .. house.getNullable('f', 6.06)
-  })
-log.info('ClickHouse call result of query using RowBinary: %s', result)
-
--- INSERT data in simplified form of MessagePack
-query = house.new('http://localhost:8123/', credentials, 'INSERT INTO SomeData (ID, Date, Name) FORMAT MsgPack')
-status, result = query(
-  {
-    house.compose({ 7, math.floor(fiber.time()), 'Test 7' }),
-    house.compose({ 8, math.floor(fiber.time()), 'Test 8' })
+    pickle.pack('ii', 1, now) .. house.getString('First')  .. house.getNullable('f', 0.5),
+    pickle.pack('ii', 2, now) .. house.getString('Second') .. house.getNullable('f', nil)
   })
 
--- SELECT data using non-parameterized query
-query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality FORMAT MsgPack')
-status, result = query()
-if status then
-  log.info('Data of non-parameterized query:')
-  house.parse(result, 4, log.info)
-end
-
--- SELECT data using parameterized query
-query = house.new('http://localhost:8123/', credentials, 'SELECT ID, Date, Name, Quality WHERE ID > {id:UInt32} FORMAT MsgPack')
-status, result = query({ id = 3 })
-if status then
-  list = { }
-  house.parse(result, 4, list)
-  log.info('Data of parameterized query:')
-  log.info(list)
+if not status then
+  log.error('ClickHouse: %s', result)
 end
 ```
 
+## Queries
+
+### A query object
+
+```lua
+local query = house.new(url, headers, query_text [, timeout])
+```
+
+* `url` is the address of the HTTP interface, `http://host:8123/`. Settings of ClickHouse can follow in the query string of the URL, for example `http://host:8123/?async_insert=1&wait_for_async_insert=0`.
+* `headers` is a table of HTTP headers. The credentials go here: `X-ClickHouse-User`, `X-ClickHouse-Key` and `X-ClickHouse-Database`. The module copies the table and adds `Content-Encoding: deflate` to its copy; the table of the caller does not change. `nil` means no headers.
+* `query_text` is the text of the query. A query that starts with `INSERT` (spaces before it are fine) is an INSERT: its text goes in the URL, and each call sends data in the body. Any other query goes in the body itself, and each call can pass parameters for it in the URL.
+* `timeout` is the timeout of each request in seconds, 30 by default.
+
+The object keeps its HTTP client with one connection alive between calls. Create it once and call it as many times as needed.
+
+### Calls
+
+```lua
+local status, result = query(rows)        -- INSERT: a table of rows, each row a string in the format of the query
+local status, result = query(raw)         -- INSERT: one string with all the data
+local status, result = query(parameters)  -- other queries: { name = value, ... } for {name:Type} in the text
+local status, result = query()            -- other queries without parameters
+```
+
+The rows of a table are concatenated as they are, so each row has to be complete in the format of the query: a row of RowBinary, a row of MessagePack, or a line of TabSeparated with its `\n`.
+
+Parameters are the [query parameters](https://clickhouse.com/docs/en/interfaces/cli#cli-queries-with-parameters) of ClickHouse: the text has `{name:Type}`, the call passes `{ name = value }`. The values are converted with `tostring()` and escaped in the URL, so a string may contain any characters.
+
+### Results
+
+A call returns `true, body` on success, where `body` is the response of ClickHouse: empty for an INSERT, the data of a SELECT in its format.
+
+On failure it returns `false, error`:
+
+* `HTTP <status>: <message>` when ClickHouse answers with an error, for example `HTTP 404: Code: 60. DB::Exception: ... (UNKNOWN_TABLE)`;
+* `HTTP <status>: <reason>` with a status of `http.client` (595 and so on) when the request could not connect or timed out;
+* the text of a Lua error raised while sending.
+
+A call does not raise errors itself, so a loop that sends data can log the error and retry later. The helpers of MessagePack and RowBinary below do raise errors on values they cannot encode.
+
+## Which format
+
+| Format | Use it for | Type checks of ClickHouse |
+|---|---|---|
+| RowBinary | INSERT of large batches, UUID, Decimal, DateTime64 | none: a wrong type shifts the rest of the row |
+| MessagePack (`FORMAT MsgPack`) | INSERT of simple types; the results of SELECT | yes |
+| TabSeparated, JSONEachRow and other text formats | small or occasional data, debugging | yes |
+
+RowBinary is the fastest and the most precise, but ClickHouse reads it blindly: the encoding of each value has to match the type of its column exactly, in the order of the columns of the INSERT. A mistake either fails the whole INSERT or, worse, writes wrong values. Write the encoding of a row once, next to the list of columns, and test it against a real table.
+
+MessagePack lets ClickHouse check the types, but not every type of ClickHouse has a form in MessagePack: see the [description of the format](https://clickhouse.com/docs/en/interfaces/formats/MsgPack), and the issues about [UUID in MessagePack](https://github.com/ClickHouse/ClickHouse/issues/33756) and [UUID in binary formats](https://github.com/ClickHouse/ClickHouse/issues/33910). That is why inserts with UUIDs and Decimals moved to RowBinary.
+
+## MessagePack
+
+`msgpack.encode()` of Tarantool encodes most values as ClickHouse expects them. The exceptions are floats and whole rows.
+
+| Column | Encode with |
+|---|---|
+| Int*, UInt* | `msgpack.encode(value)` |
+| Float32 | `house.getFloat32(value)` |
+| Float64 | `house.getFloat64(value)` |
+| String, FixedString | `msgpack.encode(value)` |
+| DateTime | `msgpack.encode(seconds)`, an integer of the Unix time |
+| Date | `msgpack.encode(days)`, days since 1970-01-01 |
+| Nullable(T) | `msgpack.encode(box.NULL)` for NULL, the value otherwise; `getFloat32(nil)` and `getFloat64(nil)` give NULL too |
+
+`msgpack.encode()` turns a Lua number without a fraction, like `2`, into an integer of MessagePack, which a Float column does not take. `getFloat32()` and `getFloat64()` always encode float 32 and float 64.
+
+A row of MessagePack is its values one after another, without the header of an array. Concatenate the encoded values, or let `house.compose()` encode a whole row:
+
+```lua
+local insert = house.new(url, headers, 'INSERT INTO SomeData (ID, Date, Name, Quality) FORMAT MsgPack')
+
+insert(
+  {
+    msgpack.encode(1) .. msgpack.encode(now) .. msgpack.encode('First') .. house.getFloat32(1),
+    house.compose({ 2, now, 'Second', box.NULL })
+  })
+```
+
+`house.compose()` uses `msgpack.encode()` for each value, so it suits rows without Float columns. Put `box.NULL` for NULL, not `nil`: a `nil` in the middle of a Lua table can turn the table into a map.
+
+## RowBinary
+
+A row of RowBinary is the binary forms of its values one after another. Most of them are scalars that [`pickle.pack()`](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/) of Tarantool encodes; the module encodes the rest. All the numbers are little-endian.
+
+| Column | Encode with |
+|---|---|
+| UInt8, Int8, Bool, Enum8 | `pickle.pack('b', value)` |
+| UInt16, Int16, Enum16, Date (days) | `pickle.pack('s', value)` |
+| UInt32, Int32, DateTime (seconds) | `pickle.pack('i', value)` |
+| UInt64, Int64 | `pickle.pack('l', value)` |
+| Float32 | `pickle.pack('f', value)` |
+| Float64 | `pickle.pack('d', value)` |
+| String, LowCardinality(String) | `house.getString(value)` |
+| FixedString(N) | the N bytes of the value as they are |
+| UUID | `house.getUUID(value)` |
+| Decimal32(S) | `house.getDecimal(value, S, 4)` |
+| Decimal64(S) | `house.getDecimal(value, S, 8)` |
+| Decimal128(S) | `house.getDecimal(value, S, 16)` |
+| DateTime64(P) | `house.getDateTime64(value, P)` |
+| Nullable(T), LowCardinality(Nullable(T)) | `house.getNullable(format, value, ...)`, see below |
+
+Several scalars can share one `pickle.pack()`: `pickle.pack('iib', id, time, kind)`.
+
+* `house.getString(value)` is the length of the string in LEB128 and its bytes.
+* `house.getUUID(value)` takes a `uuid` object, a UUID as text (`'f47ac10b-58cc-4372-a567-0e02b2c3d479'`) or its 16 bytes in network byte order. ClickHouse stores a UUID as two 64-bit halves, each little-endian; the function swaps them.
+* `house.getDecimal(value, scale, size)` takes a `decimal`, a number or a string. It multiplies the value by 10 to the power of the scale, floors the digits beyond the scale and writes the integer in `size` bytes. A value that does not fit raises an error, so does a size other than 4, 8 and 16. For Decimal128 the integer has to fit into Int64 as well, which covers 18 digits.
+* `house.getDateTime64(value, precision)` takes a `datetime` object and writes its ticks since the Unix epoch, `precision` from 0 to 9 digits of a second: 3 for milliseconds, 6 for microseconds. The digits beyond the precision are floored. The time zone of the column is only how ClickHouse shows the value; the stored ticks are UTC.
+
+### Nullable
+
+`house.getNullable(format, value, ...)` writes the byte of NULL, `1`, when `value` is `nil` or `box.NULL`. Otherwise it writes `0` and the value in the form `format` names:
+
+| format | Value | The same as |
+|---|---|---|
+| a letter of `pickle.pack()`: `'b'`, `'s'`, `'i'`, `'l'`, `'f'`, `'d'` | a number | `pickle.pack(format, value)` |
+| `'?'` | String | `house.getString(value)` |
+| `'-'` | UUID | `house.getUUID(value)` |
+| `'!'` | Decimal, then `scale, size` | `house.getDecimal(value, scale, size)` |
+| `'+'` | DateTime64, then `precision` | `house.getDateTime64(value, precision)` |
+| `'*'` | a value encoded already, or a FixedString | the string as it is |
+
+```lua
+house.getNullable('i', count)              -- Nullable(UInt32)
+house.getNullable('?', name)               -- Nullable(String), LowCardinality(Nullable(String))
+house.getNullable('-', aggregate)          -- Nullable(UUID)
+house.getNullable('!', price, 2, 8)        -- Nullable(Decimal64(2))
+house.getNullable('+', updated, 3)         -- Nullable(DateTime64(3))
+```
+
+## Reading results
+
+Ask for `FORMAT MsgPack` and parse the response with `house.parse()`. A response of MessagePack is the values of all the rows one after another, so `parse()` needs the number of columns:
+
+```lua
+local query = house.new(url, headers,
+  'SELECT ID, Name, Quality FROM SomeData WHERE ID > {id:UInt32} ORDER BY ID FORMAT MsgPack')
+
+local status, result = query({ id = 100 })
+if status then
+  local rows = { }
+  house.parse(result, 3, rows)                -- rows[1] = { 101, 'Name', 0.5 }, ...
+end
+```
+
+or call a function on each row, with extra arguments if needed:
+
+```lua
+house.parse(result, 3, function (row, space)
+  space:replace(row)
+end, box.space.SomeCopy)
+```
+
+NULL comes as `box.NULL`. Convert the types MessagePack has no form for on the side of ClickHouse:
+
+| Column | In SELECT | Comes as |
+|---|---|---|
+| UUID | `toString(Key)` | a string |
+| Decimal | `toString(Amount)` | a string, for `decimal.new()` |
+| DateTime64(3) | `toUnixTimestamp64Milli(Moment)` | an integer of milliseconds |
+| DateTime | `toUnixTimestamp(Date)` | an integer of seconds |
+
+Any other format works as well: the body is the response as ClickHouse sent it, and the lines of `FORMAT JSONEachRow` can go to `json.decode()` one by one.
+
+## A batch export from a space
+
+This is how the module runs in production: a record is encoded in RowBinary as soon as it is final, waits in a space, and a fiber sends the waiting rows in batches. When ClickHouse is not available, the rows stay in the space until the next attempt.
+
+```lua
+local log    = require('log')
+local fiber  = require('fiber')
+local pickle = require('pickle')
+local house  = require('ClickHouse')
+
+-- From the configuration of the application
+local address = 'http://localhost:8123/'
+local headers = { ['X-ClickHouse-User'] = 'user', ['X-ClickHouse-Key'] = 'password', ['X-ClickHouse-Database'] = 'database' }
+
+box.schema.space.create('ExportCache', { if_not_exists = true })
+box.space.ExportCache:create_index('Key', { if_not_exists = true, parts = { 1, 'string' } })
+
+-- Called when a record is final
+local function put(record)
+  local row =
+    pickle.pack('i', record.instance) .. house.getUUID(record.session) ..
+    house.getDateTime64(record.created, 3) .. house.getDateTime64(record.updated, 3) ..
+    pickle.pack('ii', record.source, record.destination) ..
+    house.getNullable('?', record.name) .. house.getNullable('l', record.count)
+  box.space.ExportCache:replace({ record.key, row })
+end
+
+local function post()
+  local set   = box.space.ExportCache:select(nil, { fullscan = true, limit = 8192 })
+  local data  = { }
+  local query = house.new(address, headers,
+    'INSERT INTO Records (Instance, Session, Created, Updated, SourceID, DestinationID, Name, Count) FORMAT RowBinary')
+
+  for _, tuple in ipairs(set) do
+    table.insert(data, tuple[2])
+  end
+
+  local status, result = query(data)
+  if not status then
+    log.error('Error posting data to ClickHouse: %s', result)
+    return
+  end
+
+  -- Only after ClickHouse took them
+  for _, tuple in ipairs(set) do
+    box.space.ExportCache:delete(tuple[1])
+  end
+end
+
+fiber.create(function ()
+  local worker
+  while not fiber.testcancel() do
+    if box.space.ExportCache:len() > 0 and (worker == nil or worker:status() == 'dead') then
+      -- Each attempt in a fiber of its own: a failure of the request never stops this loop
+      worker = fiber.create(post)
+    end
+    fiber.sleep(10)
+  end
+end)
+```
+
+A few notes from production:
+
+* The limit of `select()` keeps an INSERT in a size ClickHouse takes in one go, even after a long outage.
+* A version of the row format next to each cached row lets an update of the code skip rows encoded for the old list of columns.
+* ClickHouse prefers fewer, bigger INSERTs: sending every 10 seconds or so is better than every row. With many small writers, `?async_insert=1` in the URL lets ClickHouse batch them.
+
+## API
+
+### Queries
+
+| Function | Description |
+|---|---|
+| `house.new(url, headers, query [, timeout])` | Creates a query object, see [Queries](#queries) |
+| `query(rows)`, `query(raw)` | Runs an INSERT with the data |
+| `query(parameters)`, `query()` | Runs another query, with or without parameters |
+
+### MessagePack
+
+| Function | Description |
+|---|---|
+| `house.getFloat32(value)` | A float 32 of MessagePack, `nil` gives NULL |
+| `house.getFloat64(value)` | A float 64 of MessagePack, `nil` gives NULL |
+| `house.compose({ values })` | A row of MessagePack from a Lua table |
+| `house.parse(response, columns, table)` | Appends the rows of a response to a table |
+| `house.parse(response, columns, function [, ...])` | Calls `function(row, ...)` on each row of a response |
+
+### RowBinary
+
+| Function | Description |
+|---|---|
+| `house.getLEB128(value)` | An unsigned integer in LEB128 |
+| `house.getString(value)` | A String |
+| `house.getUUID(value)` | A UUID from a `uuid`, its text or its 16 bytes |
+| `house.getDecimal(value, scale, size)` | A Decimal32, Decimal64 or Decimal128 (size 4, 8, 16) |
+| `house.getDateTime64(value, precision)` | A DateTime64 from a `datetime` |
+| `house.getNullable(format, value [, ...])` | A Nullable, see [Nullable](#nullable) |
+
+## Limitations
+
+* Little-endian machines only: RowBinary is little-endian, and the module writes the memory of integers as it is.
+* Decimal128 only within the range of Int64 after the scale. The helpers do not encode Decimal256, Int128 and Int256.
+* RowBinary has no type checks: test the encoding of a row against a real table.
+* The response of a SELECT is held in memory as one string: use LIMIT or several queries for large results.
+
 ## Tests
 
-`Tests/ClickHouseTest.lua` checks the library against a live ClickHouse. `Tests/DockerTest.sh` runs it with ClickHouse and Tarantool in Docker, `Tests/RemoteTest.sh host` does the same on another Docker host over ssh. `CLICKHOUSE_IMAGE` and `TARANTOOL_IMAGE` choose the images.
+`Tests/ClickHouseTest.lua` checks every helper and every form of a query against a live ClickHouse: MessagePack, TabSeparated and RowBinary with all the forms of Nullable, UUID, Decimal32, Decimal64 and Decimal128, DateTime64, long strings, parameters with special characters, settings in the URL, errors of ClickHouse and a refused connection.
+
+* `Tests/DockerTest.sh` runs it with ClickHouse and Tarantool in Docker.
+* `Tests/RemoteTest.sh host` does the same on another Docker host over ssh.
+* `CLICKHOUSE_IMAGE` and `TARANTOOL_IMAGE` choose the images, `clickhouse/clickhouse-server:25.3` and `tarantool/tarantool:3` by default.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE).
