@@ -26,7 +26,7 @@ The typical task is a batch export: Tarantool accumulates records (calls, sessio
 ## Requirements
 
 * Tarantool 3.x
-* lua-zlib: the `lua-zlib` package of Debian and Ubuntu, or the rock of the same name
+* lua-zlib (`require('zlib')`): built into the Docker images of Tarantool; elsewhere the `lua-zlib` package of Debian and Ubuntu, or the rock of luarocks.org
 * A little-endian machine: amd64 or aarch64
 * ClickHouse with the HTTP interface (port 8123 by default); the tests run against ClickHouse 25.3
 
@@ -34,16 +34,20 @@ The module uses the Lua libraries of Tarantool (`http.client`, `msgpack`, `pickl
 
 ## Installation
 
-Copy `ClickHouse.lua` to a directory of `package.path` of your application and install lua-zlib:
-
-```sh
-apt-get install lua-zlib
-```
-
-or install the rock with its dependency from a clone of the repository:
+Copy `ClickHouse.lua` to a directory of `package.path` of your application, or install the rock from a
+clone of the repository:
 
 ```sh
 tt rocks make click-a-tool-scm-1.rockspec
+```
+
+The rock depends on Tarantool 3 only. lua-zlib is not on the rock server of Tarantool, so it is not
+a dependency of the rock: the Docker images of Tarantool have it, on Debian and Ubuntu it is a package,
+elsewhere it is a rock of luarocks.org (built with the headers of zlib, `git` and `unzip` at hand):
+
+```sh
+apt-get install lua-zlib                                 # Debian, Ubuntu
+tt rocks install lua-zlib --server=https://luarocks.org   # elsewhere
 ```
 
 Then:

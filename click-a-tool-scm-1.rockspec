@@ -19,9 +19,11 @@ String, UUID, Decimal, DateTime64 and Nullable in RowBinary.
   license  = 'Apache-2.0'
 }
 
+-- zlib (lua-zlib) is not a dependency here: the Docker images of Tarantool have it, Debian and Ubuntu have
+-- the lua-zlib package, and rocks.tarantool.org has no rock of it, see Installation in README.md
 dependencies = {
-  'lua >= 5.1',
-  'lua-zlib >= 1.2'
+  'lua ~> 5.1',
+  'tarantool >= 3.0'
 }
 
 build = {
