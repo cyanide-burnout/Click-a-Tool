@@ -74,6 +74,21 @@ local function helpers()
   check('Nullable nil', house.getNullable('?', nil) == '\1' and house.getNullable('i', box.NULL) == '\1')
   check('compose',      msgpack.decode('\147' .. house.compose({ 1, 'a', 2 }))[2] == 'a')
 
+  local function fails(name, pattern, call, ...)
+    local status, problem = pcall(call, ...)
+    check(name, not status and tostring(problem):match(pattern) ~= nil, tostring(problem))
+  end
+  fails('Decimal32 overflow', 'Decimal32',             house.getDecimal, decimal.new('21474836.48'), 2, 4)
+  fails('Int64 overflow',     'does not fit into Int64', house.getDecimal, decimal.new('1e20'), 2, 8)
+  fails('Decimal size',       'size is 4, 8 or 16',    house.getDecimal, 1, 2, 2)
+  fails('Decimal of nil',     'decimal',               house.getDecimal, nil, 2, 8)
+  fails('DateTime64 of nil',  'datetime expected',     house.getDateTime64, nil, 3)
+  fails('DateTime64 scale',   'scale is from 0 to 9',  house.getDateTime64, datetime.now(), 10)
+  fails('UUID of 3 bytes',    'uuid',                  house.getUUID, 'abc')
+  check('Decimal of a number and a string', house.getDecimal(1.5, 2, 8) == house.getDecimal('1.50', 2, 8))
+  check('UUID of text', house.getUUID('0b5c1e3a-7f3e-4d39-9a31-6f1c2d3e4f50') ==
+    house.getUUID(uuid.fromstr('0b5c1e3a-7f3e-4d39-9a31-6f1c2d3e4f50')))
+
   local copy = { }
   for name, value in pairs(credentials) do copy[name] = value end
   house.new(URL, copy, 'SELECT 1')
@@ -136,6 +151,15 @@ local function messagepack()
   local text = 'a b&c=d/e?f%g+h#i\'j"k ü'
   list = select('SELECT {text:String} FORMAT MsgPack', 1, { text = text })
   check('parameter String', list[1][1] == text, list)
+
+  -- Settings of ClickHouse in the URL already
+  local status, result = house.new(URL .. '?max_result_rows=1000', credentials,
+    'SELECT count() FROM SomeData WHERE ID > {id:UInt32} FORMAT MsgPack')({ id = 0 })
+  check('URL with settings, parameters', status and msgpack.decode(result) == 6, result)
+  status, result = house.new(URL .. '?max_result_rows=1000', credentials,
+    'INSERT INTO SomeData (ID, Date, Name) FORMAT TabSeparated')('7\t2025-11-25 12:24:56\tTest 7\n')
+  check('URL with settings, INSERT', status, result)
+  check('URL with settings, rows', select('SELECT count() FROM SomeData FORMAT MsgPack', 1)[1][1] == 7)
 end
 
 -- RowBinary ------------------------------------------------------------------------------
@@ -157,7 +181,8 @@ local function rowbinary()
       `Price`  Nullable(Decimal64(2)),
       `When`   Nullable(DateTime64(6, 'UTC')),
       `Flag`   Nullable(UInt8),
-      `Raw`    Nullable(FixedString(3))
+      `Raw`    Nullable(FixedString(3)),
+      `Large`  Decimal128(6)
     )
     ENGINE = MergeTree()
     ORDER BY `ID`]])
@@ -175,25 +200,25 @@ local function rowbinary()
       house.getDateTime64(moment, 3) ..
       house.getNullable('?', 'note') .. house.getNullable('-', tag) .. house.getNullable('l', -42) ..
       house.getNullable('!', decimal.new('9.99'), 2, 8) .. house.getNullable('+', moment, 6) ..
-      house.getNullable('b', 1) .. house.getNullable('*', 'abc'),
+      house.getNullable('b', 1) .. house.getNullable('*', 'abc') .. house.getDecimal(decimal.new('-123456789012.345678'), 6, 16),
 
       pickle.pack('i', 2) .. house.getString(short) .. house.getUUID(key:bin('b')) ..
       house.getDecimal(decimal.new('-0.0001'), 4, 8) .. house.getDecimal(decimal.new('0'), 2, 4) ..
       house.getDateTime64(moment, 3) ..
       house.getNullable('?', nil) .. house.getNullable('-', nil) .. house.getNullable('l', box.NULL) ..
       house.getNullable('!', nil) .. house.getNullable('+', nil) .. house.getNullable('b', nil) ..
-      house.getNullable('*', nil),
+      house.getNullable('*', nil) .. house.getDecimal(decimal.new('9223372036854.775807'), 6, 16),
 
       pickle.pack('i', 3) .. house.getString(long) .. house.getUUID(key) ..
       house.getDecimal(decimal.new('123456789.1234'), 4, 8) .. house.getDecimal(decimal.new('99.999'), 2, 4) ..
       house.getDateTime64(datetime.new({ year = 1970, month = 1, day = 1 }), 3) ..
       house.getNullable('?', '') .. house.getNullable('-', nil) .. house.getNullable('l', 0) ..
       house.getNullable('!', decimal.new('-0.01'), 2, 8) .. house.getNullable('+', nil) .. house.getNullable('b', 0) ..
-      house.getNullable('*', nil)
+      house.getNullable('*', nil) .. house.getDecimal(0, 6, 16)
     })
 
   local list = select('SELECT ID, length(Name), toString(Key), toString(Amount), toString(Small), toString(Moment),' ..
-    ' Note, toString(Tag), Count, toString(Price), toString(When), Flag, Raw FROM BinaryData ORDER BY ID FORMAT MsgPack', 13)
+    ' Note, toString(Tag), Count, toString(Price), toString(When), Flag, Raw, toString(Large) FROM BinaryData ORDER BY ID FORMAT MsgPack', 14)
   check('RowBinary rows', #list == 3, #list)
 
   local row = list[1]
@@ -204,7 +229,10 @@ local function rowbinary()
   check('RowBinary Nullable values', row[7] == 'note' and row[8] == tag:str() and row[9] == -42 and
     row[10] == '9.99' and row[11] == '2026-11-25 12:34:56.789123' and row[12] == 1 and row[13] == 'abc', row)
 
+  check('RowBinary negative Decimal128', row[14] == '-123456789012.345678', row[14])
+
   row = list[2]
+  check('RowBinary largest Decimal128', row[14] == '9223372036854.775807', row[14])
   check('RowBinary String of 300', row[2] == 300, row[2])
   check('RowBinary UUID from binary', row[3] == key:str(), row[3])
   check('RowBinary small negative Decimal', row[4] == '-0.0001' and row[5] == '0', row[4], row[5])

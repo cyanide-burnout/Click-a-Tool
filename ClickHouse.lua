@@ -3,6 +3,10 @@
   Light ClickHouse client for Tarantool
   Artem Prilutskiy, 2022-2026
 
+  The HTTP interface of ClickHouse through http.client of Tarantool, requests and
+  data compressed with deflate. Helpers encode values in the strict forms of MsgPack
+  and RowBinary that ClickHouse expects. Tarantool 3, little-endian (amd64, aarch64).
+
 ]]
 
 local bit      = require('bit')
@@ -67,7 +71,11 @@ local function getLEB128(value)
 end
 
 local function getNativeUUID(value)
+  if type(value) == 'string' and value:len() == 36 then value = uuid.fromstr(value) end
   if uuid.is_uuid(value) then value = value:bin('b') end
+  if type(value) ~= 'string' or value:len() ~= 16 then
+    error('getUUID: a uuid, a UUID string or 16 bytes expected', 2)
+  end
   return value:sub(1, 8):reverse() .. value:sub(9, 16):reverse()
 end
 
@@ -75,22 +83,50 @@ local function getNativeString(value)
   return getLEB128(value:len()) .. value
 end
 
-local function getNativeDecimal(value, scale, size)
-  if decimal.is_decimal(value) then
-    local value  = value * math.pow(10, scale)
-    local buffer = ffi.new('int64_t[1]')
-    ffi.C.box_decimal_to_int64(value, buffer)
-    return ffi.string(buffer, size)
+-- A decimal as the integer ClickHouse stores, the fraction floored: Int64 at most
+local function getScaledInteger(value, scale, name)
+  local buffer = ffi.new('int64_t[1]')
+  if ffi.C.box_decimal_to_int64(value * math.pow(10, scale), buffer) == nil then
+    error(string.format('%s: %s does not fit into Int64 with the scale %d', name, tostring(value), scale), 3)
   end
+  return buffer
+end
+
+local INT32_MIN = -0x80000000
+local INT32_MAX =  0x7fffffff
+
+local function getNativeDecimal(value, scale, size)
+  if type(value) == 'number' or type(value) == 'string' then value = decimal.new(value) end
+  if not decimal.is_decimal(value) then
+    error('getDecimal: a decimal, a number or a string expected', 2)
+  end
+  local buffer = getScaledInteger(value, scale, 'getDecimal')
+  if size == 4 then
+    if buffer[0] < INT32_MIN or buffer[0] > INT32_MAX then
+      error(string.format('getDecimal: %s does not fit into Decimal32 with the scale %d', tostring(value), scale), 2)
+    end
+    return ffi.string(buffer, 4)
+  end
+  if size == 8 then
+    return ffi.string(buffer, 8)
+  end
+  if size == 16 then
+    -- Decimal128: the sign extends the 64 bits
+    return ffi.string(buffer, 8) .. string.rep(buffer[0] < 0 and '\255' or '\0', 8)
+  end
+  error('getDecimal: the size is 4, 8 or 16', 2)
 end
 
 local function getNativeDateTime64(value, scale)
-  if datetime.is_datetime(value) then
-    local value  = decimal.new(value.epoch) * math.pow(10, scale) + decimal.new(value.nsec) / math.pow(10, 9 - scale)
-    local buffer = ffi.new('int64_t[1]')
-    ffi.C.box_decimal_to_int64(value, buffer)
-    return ffi.string(buffer, 8)
+  if not datetime.is_datetime(value) then
+    error('getDateTime64: a datetime expected', 2)
   end
+  if type(scale) ~= 'number' or scale < 0 or scale > 9 then
+    error('getDateTime64: the scale is from 0 to 9', 2)
+  end
+  local ticks  = decimal.new(value.epoch) + decimal.new(value.nsec) / 1e9
+  local buffer = getScaledInteger(ticks, scale, 'getDateTime64')
+  return ffi.string(buffer, 8)
 end
 
 local function getNativeNullable(format, value, ...)
@@ -122,7 +158,7 @@ local function makeCall(object, data)
   if object.body and type(data) == 'table' then
     local query = { }
     for name, value in pairs(data) do table.insert(query, string.format('param_%s=%s', name, getEscapedString(value))) end
-    location = object.location .. '?' .. table.concat(query, '&')
+    location = object.location .. object.separator .. table.concat(query, '&')
   end
   local status, result = pcall(object.client.post, object.client, location or object.location, object.body or body, object.options)
   if not status then return false, result or 'HTTP request failed without error details' end
@@ -137,15 +173,17 @@ end
 
 local function getNew(location, headers, query, timeout)
   -- A copy of the headers: the table of the caller stays as it is
-  local list = { ['Content-Encoding'] = 'deflate' }
+  local list      = { ['Content-Encoding'] = 'deflate' }
+  local separator = location:find('?', 1, true) and '&' or '?'
   for name, value in pairs(headers or { }) do list[name] = value end
   local object =
   {
-    client  = client.new({ max_connections = 1 }),
-    options = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
+    client    = client.new({ max_connections = 1 }),
+    separator = separator,
+    options   = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
   }
   if query:upper():match('^%s*INSERT%s') then
-    object.location = location .. '?query=' .. getEscapedString(query)
+    object.location = location .. separator .. 'query=' .. getEscapedString(query)
   else
     object.location = location
     object.body     = getCompressedData(query)
