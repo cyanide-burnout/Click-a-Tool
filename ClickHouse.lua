@@ -16,27 +16,24 @@ local datetime = require('datetime')
 local client   = require('http.client')
 
 ffi.cdef([[
-  char* mp_encode_float(char* data, float value);
-  char* mp_encode_double(char* data, double value);
   const decimal_t* box_decimal_to_int64(const decimal_t* decimal, int64_t* number);
 ]])
 
 -- MessagePack
 
+-- msgpack of Tarantool encodes a cdata float as float 32 and a cdata double as float 64,
+-- a Lua number with no fraction would become an integer
+
 local function getPackedFloat32(value)
   if type(value) == 'number' then
-    local buffer = ffi.new('char[5]')
-    ffi.C.mp_encode_float(buffer, value)
-    return ffi.string(buffer, 5)
+    return msgpack.encode(ffi.cast('float', value))
   end
   return '\192'
 end
 
 local function getPackedFloat64(value)
   if type(value) == 'number' then
-    local buffer = ffi.new('char[9]')
-    ffi.C.mp_encode_double(buffer, value)
-    return ffi.string(buffer, 9)
+    return msgpack.encode(ffi.cast('double', value))
   end
   return '\192'
 end
@@ -109,7 +106,7 @@ end
 -- Query
 
 local function getEscapedString(value)
-  return tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end)
+  return (tostring(value):gsub('[^%w]', function (symbol) return string.format('%%%02x', string.byte(symbol)) end))
 end
 
 local function getCompressedData(data)
@@ -139,18 +136,20 @@ local function makeCall(object, data)
 end
 
 local function getNew(location, headers, query, timeout)
+  -- A copy of the headers: the table of the caller stays as it is
+  local list = { ['Content-Encoding'] = 'deflate' }
+  for name, value in pairs(headers or { }) do list[name] = value end
   local object =
   {
     client  = client.new({ max_connections = 1 }),
-    options = { headers = headers, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
+    options = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
   }
-  if query:upper():match('^INSERT ') then
+  if query:upper():match('^%s*INSERT%s') then
     object.location = location .. '?query=' .. getEscapedString(query)
   else
     object.location = location
     object.body     = getCompressedData(query)
   end
-  headers['Content-Encoding'] = 'deflate'
   setmetatable(object, { __call = makeCall })
   return object
 end
