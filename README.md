@@ -1,50 +1,65 @@
 # Click-a-Tool
 A light ClickHouse client for Tarantool
 
-Artem Prilutskiy, 2022-2023
+Artem Prilutskiy, 2022-2026
 
-Client library uses HTTP interface of ClickHouse to interact with. It is more preferable to use MessagePack format to pass data to. Since ClickHouse uses strict form of data, there are helper functions to make some data fields in strict format. Most of [types](https://clickhouse.com/docs/en/interfaces/formats/#msgpack) can be encoded directly by [Tarantool's msgpack library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/msgpack/).
+The library talks to ClickHouse over its [HTTP interface](https://clickhouse.com/docs/en/interfaces/http/). Requests and data go compressed with deflate. MessagePack is the preferable format to pass data in. Since ClickHouse takes data in a strict form, there are helper functions to encode some fields that way. Most of the [types](https://clickhouse.com/docs/en/interfaces/formats/#msgpack) can be encoded directly by [the msgpack library of Tarantool](https://www.tarantool.io/en/doc/latest/reference/reference_lua/msgpack/).
 
-The library also provides support of RowBinary. Most of scalar types can be encoded by the [pickle library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/), that is why these are not implemeted here. Please read [RowBinary format description](https://clickhouse.com/docs/en/interfaces/formats/#rowbinary) for details. You can use when you really understand what are you doing or have a need such as for example to pass UUIDs or Decimals, because in case of RowBinary ClickHouse doesn't do type check.
+The library also supports RowBinary. Most of the scalar types can be encoded by [the pickle library](https://www.tarantool.io/en/doc/latest/reference/reference_lua/pickle/), that is why they are not implemented here. Please read [the description of RowBinary](https://clickhouse.com/docs/en/interfaces/formats/#rowbinary) for details. Use it when you really understand what you are doing, or when you need it, for example to pass UUIDs or Decimals: with RowBinary ClickHouse does not check the types.
 
-Typical use of the library is a batch propagation of data that is accomulated in Tarantool to ClickHouse. Due to lack of supported MessagePack types we moved our code to use RowBinary. SELECT queries can use MessagePack with converting functions for unsupported types on ClickHouse side.
+A typical use of the library is a batch propagation of data accumulated in Tarantool to ClickHouse. Because of the MessagePack types ClickHouse lacks, our code moved to RowBinary. SELECT queries can use MessagePack with conversion functions on the side of ClickHouse for the types it does not support.
 
-
-Please read details of HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
-And supported formats: https://clickhouse.com/docs/en/interfaces/formats/
+Please read the details of the HTTP interface here: https://clickhouse.com/docs/en/interfaces/http/ \
+And the supported formats: https://clickhouse.com/docs/en/interfaces/formats/
 
 About UUIDs over MessagePack in ClickHouse: https://github.com/ClickHouse/ClickHouse/issues/33756 \
 Also about UUIDs in Native and Binary formats: https://github.com/ClickHouse/ClickHouse/issues/33910
 
-Please note, the library written in Lua and intensively uses [Tarantool Lua libraries](https://www.tarantool.io/en/doc/latest/reference/reference_lua/) (pickle, msgpack, decimal, http.client) and C functions via [FFI](https://luajit.org/ext_ffi.html). It cannot run in a pure Lua environment.
+Please note, the library is written in Lua and uses [the Lua libraries of Tarantool](https://www.tarantool.io/en/doc/latest/reference/reference_lua/) (pickle, msgpack, decimal, datetime, http.client) and C functions of Tarantool via [FFI](https://luajit.org/ext_ffi.html) intensively. It cannot run in a pure Lua environment.
 
 ## Requirements
 
-* Tarantool 2.x
-* lua-zlib (can be installed from the standard Linux distribution)
+* Tarantool 2.11 or later (datetime and the C API of decimal)
+* lua-zlib (`lua-zlib` in Debian and Ubuntu, or the rock of the same name)
+
+## Installation
+
+Copy `ClickHouse.lua` to a directory of `package.path`, or install the rock:
+
+```sh
+tt rocks install --server=https://luarocks.org click-a-tool --dev
+```
+
+or from a clone of the repository:
+
+```sh
+tt rocks make click-a-tool-scm-1.rockspec
+```
 
 ## API
 
 * **MessagePack**
-  * *house.getFloat32(value)* and *house.getFloat64(value)* - encode strictly formated float value in MessagePack
-  * *house.compose({ array, of, values, ... })* - encode set of fields in MessagePack (compatible to ClickHouse)
-  * *house.parse(response, count_of_columns, table_to_save)* - parse MessagePack-formatted response into a table variable
-  * *house.parse(response, count_of_columns, callback [, arguments])* - parse MessagePack-formatted response and call a *callback(row [, arguments])* on each row 
+  * *house.getFloat32(value)* and *house.getFloat64(value)* - encode a float value in the strict form of MessagePack, `nil` becomes NULL
+  * *house.compose({ array, of, values, ... })* - encode a set of fields in MessagePack (compatible with ClickHouse)
+  * *house.parse(response, count_of_columns, table_to_save)* - parse a response in MessagePack into a table
+  * *house.parse(response, count_of_columns, callback [, arguments])* - parse a response in MessagePack and call *callback(row [, arguments])* on each row
 * **RowBinary**
-  * *getLEB128(value)* - encode LEB128 unisgned integer value
-  * *getUUID(value)* - encode UUID. *value* can be a string with binary UUID in network byte order or Tarantool's *uuid* object.
-  * *getString(value)* - encode String of variable length
-  * *getDecimal(value, scale, size)* - encode Taranool's decimal as ClickHouse's Decimal. *size* is a target size in bytes, 4 for Decimal32, 8 for Decimal64. At this moment this function is suitable only when Tarantool runs on little-endian architectures (i386, amd64, aarch64 :)).
-  * *getDateTime64(value, scale)* - encode Taranool's datetime as ClickHouse's DateTime64.
-  * *getNullable(format, value [, ...])* - encode Nullable value, where *format* is '?' for a String of variable length, '!' for Decimal (see above), '+' for DateTime (see above), '\*' for a plain data or a Tarantool's *picle.pack()* format specifier for scalar types.
+  * *house.getLEB128(value)* - encode an unsigned integer value in LEB128
+  * *house.getUUID(value)* - encode a UUID. *value* is a string with a binary UUID in network byte order or a *uuid* object of Tarantool.
+  * *house.getString(value)* - encode a String of variable length
+  * *house.getDecimal(value, scale, size)* - encode a decimal of Tarantool as a Decimal of ClickHouse. *size* is the size in bytes, 4 for Decimal32, 8 for Decimal64. Digits beyond *scale* are floored. For now the function is suitable only when Tarantool runs on little-endian architectures (i386, amd64, aarch64 :)).
+  * *house.getDateTime64(value, scale)* - encode a datetime of Tarantool as a DateTime64 of ClickHouse
+  * *house.getNullable(format, value [, ...])* - encode a Nullable value, `nil` and `box.NULL` become NULL. *format* is '?' for a String of variable length, '-' for a UUID, '!' for a Decimal (see above), '+' for a DateTime64 (see above), '\*' for data encoded already, or a format of *pickle.pack()* for scalar types.
 * **Query**
-  * *house.new(url, credentials, query [, timeout])* - create a new query object. *credentials* is a KV set of HTTP headers to use (see examples bellow). *timeout* is the HTTP request timeout in seconds and defaults to 30.
-  * *query(table_of_rows)* - make an INSERT query and pass a set of rows in proper format (see examples bellow)
+  * *house.new(url, headers, query [, timeout])* - create a new query object. *headers* is a key-value set of HTTP headers, the credentials among them (see the examples below); the table is copied. *timeout* is the timeout of an HTTP request in seconds, 30 by default. A *query* that starts with INSERT sends its data in the body, any other query is sent in the body itself.
+  * *query(table_of_rows)* - make an INSERT query and pass a set of rows in the proper format (see the examples below)
   * *query(raw_string)* - make an INSERT query and pass a raw data string
   * *query({ param1=value1, param2=value2, ... })* - make a parameterized query
   * *query()* - make a non-parameterized query
 
-You are able to create a query object at once and call it many times with different parameters (data to insert or parameters to query).
+  Each call returns *true, body of the response* or *false, error*, the error is `HTTP <status>: <message of ClickHouse>` when ClickHouse answers.
+
+You can create a query object once and call it many times with different parameters (data to insert or parameters of a query).
 
 ## Usage
 
@@ -129,3 +144,7 @@ if status then
   log.info(list)
 end
 ```
+
+## Tests
+
+`Tests/ClickHouseTest.lua` checks the library against a live ClickHouse. `Tests/DockerTest.sh` runs it with ClickHouse and Tarantool in Docker, `Tests/RemoteTest.sh host` does the same on another Docker host over ssh. `CLICKHOUSE_IMAGE` and `TARANTOOL_IMAGE` choose the images.
