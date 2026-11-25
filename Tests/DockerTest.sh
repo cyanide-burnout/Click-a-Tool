@@ -11,7 +11,7 @@ NAME=click-a-tool-test-$$
 cd "$(dirname "$0")/.."
 
 cleanup() {
-  docker rm -f "$NAME-clickhouse" >/dev/null 2>&1 || true
+  docker rm -f -v "$NAME-clickhouse" >/dev/null 2>&1 || true
   docker network rm "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
