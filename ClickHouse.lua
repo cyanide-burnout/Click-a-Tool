@@ -156,115 +156,70 @@ end
 
 -- The request: the data is compressed here, unless it is the text of a query compressed already
 local function sendRequest(http, location, data, compressed, options)
-  local body = compressed and data or getCompressedData(data)
-  local status, result = pcall(http.post, http, location, body, options)
+  local status, result = pcall(http.post, http, location, compressed and data or getCompressedData(data), options)
   if not status then return false, result or 'HTTP request failed without error details' end
   if type(result) ~= 'table' or not result.status then return false, 'HTTP request returned no response' end
-  if result.status ~= 200 then
-    local reason = result.body or result.errmsg or result.reason
-    if reason then return false, string.format('HTTP %s: %s', result.status, reason) end
-    return false, string.format('HTTP %s', result.status)
-  end
-  return true, result.body
+  if result.status == 200 then return true, result.body end
+  local reason = result.body or result.errmsg or result.reason
+  return false, reason and string.format('HTTP %s: %s', result.status, reason) or string.format('HTTP %s', result.status)
 end
 
--- Threads
+-- Threads: TX evaluates BOOT in a thread once, then calls there sendRequest with the client of the thread
 
--- The function a thread exports: (location, data, compressed, options)
-local EXPORT = 'clickhouse.send'
-
--- What TX evaluates in a thread once: (path, cpath, module)
-local BOOT = [[
-local path, cpath, module = ...
-if package.loaded[module] == nil then
-  package.path, package.cpath = path, cpath
-end
-require(module).serve()
-]]
-
+local EXPORT    = 'clickhouse.send'
+local BOOT      = 'local path, cpath, module = ... if not package.loaded[module] then package.path, package.cpath = path, cpath end require(module).serve()'
 local threads          -- require('threads'), loaded with the first query in a thread
 local http             -- In a thread: its HTTP client for all the queries
 local instances = { }  -- In TX: the threads that serve queries, by group and id
 
--- In a thread: the request with the client of the thread
-local function sendInThread(location, data, compressed, options)
-  http = http or client.new()
-  return sendRequest(http, location, data, compressed, options)
-end
-
--- In a thread: exports sendInThread, once
 local function serveThread()
   threads = threads or require('threads')
-  local status, problem = pcall(threads.export, EXPORT, sendInThread)
-  if not status and not (type(problem) == 'cdata' and problem.name == 'FUNCTION_EXISTS') then
-    error(problem, 0)
-  end
+  local status, problem = pcall(threads.export, EXPORT, function (...) http = http or client.new() return sendRequest(http, ...) end)
+  if not status and not (type(problem) == 'cdata' and problem.name == 'FUNCTION_EXISTS') then error(problem, 0) end
 end
 
--- In TX: the request goes to the thread of the query, the module is loaded there with the first one
 local function sendToThread(object, location, data, compressed)
-  local thread = object.thread .. '/' .. object.thread_id
+  local thread, target = object.thread .. '/' .. object.thread_id, { target = object.thread_id }
   if not instances[thread] then
-    local status, problem = pcall(threads.eval, object.thread, BOOT,
-      { package.path, package.cpath, MODULE }, { target = object.thread_id })
+    local status, problem = pcall(threads.eval, object.thread, BOOT, { package.path, package.cpath, MODULE }, target)
     if not status then return false, tostring(problem) end
     instances[thread] = true
   end
-  local status, result = pcall(threads.call, object.thread, EXPORT,
-    { location, data, compressed, object.options }, { target = object.thread_id })
+  local status, result = pcall(threads.call, object.thread, EXPORT, { location, data, compressed, object.options }, target)
   if not status then return false, tostring(result) end
   return result[1][1], result[1][2]
 end
 
--- In TX: the group exists and has the thread
-local function checkThread(group, thread_id)
-  if threads == nil then
-    local status, module = pcall(require, 'threads')
-    if not status then
-      error('ClickHouse: a query in a thread needs application threads of Tarantool 3.9 or later', 3)
-    end
-    threads = module
-  end
-  local size
+local function checkThread(group, id)
+  local status, module = pcall(require, 'threads')
+  if not status then error('ClickHouse: a query in a thread needs application threads of Tarantool 3.9 or later', 3) end
+  threads = module
   for _, item in ipairs(threads.info().groups) do
-    if item.name == group then size = item.size end
+    if item.name == group and (type(id) ~= 'number' or id < 1 or id > item.size or id % 1 ~= 0) then error(string.format('ClickHouse: the group %s has threads 1 to %d', group, item.size), 3) end
+    if item.name == group then return end
   end
-  if size == nil then
-    error(string.format('ClickHouse: there is no group of threads %s', tostring(group)), 3)
-  end
-  if type(thread_id) ~= 'number' or thread_id < 1 or thread_id > size or thread_id ~= math.floor(thread_id) then
-    error(string.format('ClickHouse: the group %s has threads 1 to %d', group, size), 3)
-  end
+  error(string.format('ClickHouse: there is no group of threads %s', tostring(group)), 3)
 end
 
--- Query object
+-- Query object: the URL and the data are made in TX, compression and the request go here or to the thread
 
--- The URL and the data of a call are made in TX; compression and the request go here or to the thread
 local function makeCall(object, data)
   local location, compressed = object.location, object.body ~= nil
-  if compressed then
-    if type(data) == 'table' then
-      local query = { }
-      for name, value in pairs(data) do table.insert(query, string.format('param_%s=%s', name, getEscapedString(value))) end
-      location = object.location .. object.separator .. table.concat(query, '&')
-    end
-    data = object.body
-  elseif type(data) == 'table' then
-    data = table.concat(data, '')
-  elseif type(data) ~= 'string' then
-    data = ''
+  if compressed and type(data) == 'table' then
+    local query = { }
+    for name, value in pairs(data) do table.insert(query, string.format('param_%s=%s', name, getEscapedString(value))) end
+    location = location .. object.separator .. table.concat(query, '&')
   end
-  if object.thread then
-    return sendToThread(object, location, data, compressed)
-  end
+  if compressed             then data = object.body            end
+  if type(data) == 'table'  then data = table.concat(data, '') end
+  if type(data) ~= 'string' then data = ''                     end
+  if object.thread then return sendToThread(object, location, data, compressed) end
   return sendRequest(object.client, location, data, compressed, object.options)
 end
 
 -- options: a timeout in seconds, or a table { timeout, thread, thread_id }
 local function getNew(location, headers, query, options)
-  if type(options) ~= 'table' then
-    options = { timeout = options }
-  end
+  if type(options) ~= 'table' then options = { timeout = options } end
   -- A copy of the headers: the table of the caller stays as it is
   local list      = { ['Content-Encoding'] = 'deflate' }
   local separator = location:find('?', 1, true) and '&' or '?'
@@ -272,23 +227,17 @@ local function getNew(location, headers, query, options)
   local object =
   {
     separator = separator,
+    thread    = options.thread,
+    thread_id = options.thread_id or 1,
     options   = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = options.timeout or 30 }
   }
-  if options.thread ~= nil then
-    object.thread    = options.thread
-    object.thread_id = options.thread_id or 1
-    checkThread(object.thread, object.thread_id)
-  else
-    object.client = client.new({ max_connections = 1 })
-  end
+  if object.thread then checkThread(object.thread, object.thread_id) else object.client = client.new({ max_connections = 1 }) end
   if query:upper():match('^%s*INSERT%s') then
     object.location = location .. separator .. 'query=' .. getEscapedString(query)
   else
-    object.location = location
-    object.body     = getCompressedData(query)
+    object.location, object.body = location, getCompressedData(query)
   end
-  setmetatable(object, { __call = makeCall })
-  return object
+  return setmetatable(object, { __call = makeCall })
 end
 
 return {
