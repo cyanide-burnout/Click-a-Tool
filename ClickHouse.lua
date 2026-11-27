@@ -255,6 +255,6 @@ return {
   getNullable   = getNativeNullable,
   -- Query
   new           = getNew,
-  -- Threads: what a thread runs, TX evaluates it there
+  -- Threads
   serve         = serveThread
 }
