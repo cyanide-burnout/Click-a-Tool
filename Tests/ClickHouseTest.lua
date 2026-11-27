@@ -1,6 +1,7 @@
 -- Tests of Click-a-Tool against a live ClickHouse (Tests/DockerTest.sh runs it):
 --   CLICKHOUSE_URL=http://host:8123/ tarantool Tests/ClickHouseTest.lua
--- The user, the password and the database are test
+-- The user, the password and the database are test. THREAD=1 runs every query in an
+-- application thread (Tarantool 3.9 or later)
 
 local log      = require('log')
 local json     = require('json')
@@ -13,7 +14,13 @@ local datetime = require('datetime')
 local client   = require('http.client')
 local house    = require('ClickHouse')
 
-local URL = os.getenv('CLICKHOUSE_URL') or 'http://localhost:8123/'
+local URL    = os.getenv('CLICKHOUSE_URL') or 'http://localhost:8123/'
+local THREAD = os.getenv('THREAD') == '1'
+
+if THREAD then
+  -- The group app of one thread; the files of box go to /tmp, the directory stays for require
+  box.cfg({ app_threads = 1, memtx_dir = '/tmp', wal_dir = '/tmp', vinyl_dir = '/tmp' })
+end
 
 local credentials =
 {
@@ -33,8 +40,16 @@ local function check(name, condition, ...)
   end
 end
 
+-- A query object, in the thread with THREAD=1
+local function new(url, headers, query, timeout)
+  if THREAD then
+    return house.new(url, headers, query, { timeout = timeout, thread = 'app' })
+  end
+  return house.new(url, headers, query, timeout)
+end
+
 local function call(query, data)
-  local status, result = house.new(URL, credentials, query)(data)
+  local status, result = new(URL, credentials, query)(data)
   if not status then
     error(result, 2)
   end
@@ -153,10 +168,10 @@ local function messagepack()
   check('parameter String', list[1][1] == text, list)
 
   -- Settings of ClickHouse in the URL already
-  local status, result = house.new(URL .. '?max_result_rows=1000', credentials,
+  local status, result = new(URL .. '?max_result_rows=1000', credentials,
     'SELECT count() FROM SomeData WHERE ID > {id:UInt32} FORMAT MsgPack')({ id = 0 })
   check('URL with settings, parameters', status and msgpack.decode(result) == 6, result)
-  status, result = house.new(URL .. '?max_result_rows=1000', credentials,
+  status, result = new(URL .. '?max_result_rows=1000', credentials,
     'INSERT INTO SomeData (ID, Date, Name) FORMAT TabSeparated')('7\t2025-11-25 12:24:56\tTest 7\n')
   check('URL with settings, INSERT', status, result)
   check('URL with settings, rows', select('SELECT count() FROM SomeData FORMAT MsgPack', 1)[1][1] == 7)
@@ -250,23 +265,54 @@ end
 -- Failures -------------------------------------------------------------------------------
 
 local function failures_()
-  local status, result = house.new(URL, credentials, 'SELECT * FROM Missing FORMAT MsgPack')()
+  local status, result = new(URL, credentials, 'SELECT * FROM Missing FORMAT MsgPack')()
   check('unknown table', status == false and tostring(result):match('^HTTP 404: .*UNKNOWN_TABLE') ~= nil, result)
 
-  status, result = house.new(URL, { ['X-ClickHouse-User'] = 'test', ['X-ClickHouse-Key'] = 'wrong' }, 'SELECT 1')()
+  status, result = new(URL, { ['X-ClickHouse-User'] = 'test', ['X-ClickHouse-Key'] = 'wrong' }, 'SELECT 1')()
   check('wrong password', status == false and tostring(result):match('^HTTP %d+: ') ~= nil, result)
 
   -- A connection that fails, in a fiber of its own as the plug-ins call it
   local worker = fiber.new(function ()
-    return house.new('http://127.0.0.1:1/', credentials, 'SELECT 1', 2)()
+    return new('http://127.0.0.1:1/', credentials, 'SELECT 1', 2)()
   end)
   worker:set_joinable(true)
   local joined, answer, problem = worker:join()
   check('no connection', joined and answer == false and type(problem) ~= 'nil', joined, answer, tostring(problem))
 end
 
+-- Threads --------------------------------------------------------------------------------
+
+local function threads_()
+  local status, problem = pcall(house.new, URL, credentials, 'SELECT 1', { thread = 'missing' })
+  check('a missing group of threads', not status and tostring(problem):match('ClickHouse: ') ~= nil, tostring(problem))
+  if not THREAD then
+    return
+  end
+  status, problem = pcall(house.new, URL, credentials, 'SELECT 1', { thread = 'app', thread_id = 2 })
+  check('a missing thread', not status and tostring(problem):match('threads 1 to 1') ~= nil, tostring(problem))
+
+  local threads = require('threads')
+  local loaded  = threads.eval('app', "return package.loaded['ClickHouse'] ~= nil")[1][1]
+  check('the queries ran in the thread', loaded == true and package.loaded['ClickHouse'] ~= nil, loaded)
+
+  -- Several fibers at once over one query object
+  local query   = new(URL, credentials, 'SELECT {n:UInt32} * 2 FORMAT MsgPack')
+  local workers = { }
+  for index = 1, 20 do
+    local worker = fiber.new(function () return query({ n = index }) end)
+    worker:set_joinable(true)
+    workers[index] = worker
+  end
+  local right = 0
+  for index, worker in ipairs(workers) do
+    local _, success, result = worker:join()
+    if success and msgpack.decode(result) == index * 2 then right = right + 1 end
+  end
+  check('fibers at once in the thread', right == 20, right)
+end
+
 wait()
-for _, test in ipairs({ helpers, messagepack, rowbinary, failures_ }) do
+for _, test in ipairs({ helpers, messagepack, rowbinary, failures_, threads_ }) do
   local status, problem = pcall(test)
   check('no error', status, tostring(problem))
 end
@@ -275,5 +321,5 @@ if failures > 0 then
   log.error('%d failures', failures)
   os.exit(1)
 end
-log.info('all tests passed')
+log.info('all tests passed%s', THREAD and ' (in a thread)' or '')
 os.exit(0)

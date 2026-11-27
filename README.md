@@ -4,7 +4,7 @@ A light ClickHouse client for Tarantool
 
 Artem Prilutskiy, 2022-2026
 
-Click-a-Tool is one Lua module, `ClickHouse`, that sends queries and data from Tarantool to ClickHouse over the [HTTP interface](https://clickhouse.com/docs/en/interfaces/http/) of ClickHouse. It works in fibers: requests go through `http.client` of Tarantool and do not block the event loop. Queries and data are compressed with deflate.
+Click-a-Tool is one Lua module, `ClickHouse`, that sends queries and data from Tarantool to ClickHouse over the [HTTP interface](https://clickhouse.com/docs/en/interfaces/http/) of ClickHouse. It works in fibers: requests go through `http.client` of Tarantool and do not block the event loop. Queries and data are compressed with deflate. With Tarantool 3.9 a query can run in an application thread, so the compression and the request take no CPU of TX.
 
 The typical task is a batch export: Tarantool accumulates records (calls, sessions, events), and a fiber sends them to ClickHouse every few seconds in one INSERT. Helper functions encode values in the strict forms that ClickHouse expects from MessagePack and RowBinary, the binary formats it takes without parsing text.
 
@@ -25,7 +25,7 @@ The typical task is a batch export: Tarantool accumulates records (calls, sessio
 
 ## Requirements
 
-* Tarantool 3.x
+* Tarantool 3.x; 3.9 or later for queries in an application thread
 * lua-zlib (`require('zlib')`): built into the Docker images of Tarantool; elsewhere the `lua-zlib` package of Debian and Ubuntu, or the rock of luarocks.org
 * A little-endian machine: amd64 or aarch64
 * ClickHouse with the HTTP interface (port 8123 by default); the tests run against ClickHouse 25.3
@@ -104,12 +104,14 @@ end
 
 ```lua
 local query = house.new(url, headers, query_text [, timeout])
+local query = house.new(url, headers, query_text, { timeout = 30, thread = 'app', thread_id = 1 })
 ```
 
 * `url` is the address of the HTTP interface, `http://host:8123/`. Settings of ClickHouse can follow in the query string of the URL, for example `http://host:8123/?async_insert=1&wait_for_async_insert=0`.
 * `headers` is a table of HTTP headers. The credentials go here: `X-ClickHouse-User`, `X-ClickHouse-Key` and `X-ClickHouse-Database`. The module copies the table and adds `Content-Encoding: deflate` to its copy; the table of the caller does not change. `nil` means no headers.
 * `query_text` is the text of the query. A query that starts with `INSERT` (spaces before it are fine) is an INSERT: its text goes in the URL, and each call sends data in the body. Any other query goes in the body itself, and each call can pass parameters for it in the URL.
-* `timeout` is the timeout of each request in seconds, 30 by default.
+* `timeout` is the timeout of each request in seconds, 30 by default. It goes as a number or in a table of options.
+* `thread` and `thread_id` in the table of options run the query in an application thread, see [In a thread](#in-a-thread).
 
 The object keeps its HTTP client with one connection alive between calls. Create it once and call it as many times as needed.
 
@@ -125,6 +127,23 @@ local status, result = query()            -- other queries without parameters
 The rows of a table are concatenated as they are, so each row has to be complete in the format of the query: a row of RowBinary, a row of MessagePack, or a line of TabSeparated with its `\n`.
 
 Parameters are the [query parameters](https://clickhouse.com/docs/en/interfaces/cli#cli-queries-with-parameters) of ClickHouse: the text has `{name:Type}`, the call passes `{ name = value }`. The values are converted with `tostring()` and escaped in the URL, so a string may contain any characters.
+
+### In a thread
+
+With `thread`, the query runs in an application thread of Tarantool 3.9 or later: there the rows are concatenated, compressed and sent, and the response is received. TX only passes the data to the thread and gets the result, so a large INSERT no longer takes the CPU of TX for deflate.
+
+```lua
+box.cfg({ app_threads = 1 })  -- the group app of one thread; or threads.groups of the config
+
+local insert = house.new(url, headers, 'INSERT INTO SomeData FORMAT RowBinary', { thread = 'app' })
+local status, result = insert(rows)  -- called in TX, as before
+```
+
+* `thread` is the name of a group of threads, `thread_id` the thread of it, 1 by default. `house.new()` raises an error when the group or the thread does not exist, or Tarantool has no application threads.
+* The first query loads the module in the thread with `threads.eval()` under the name it was required by in TX, with `package.path` and `package.cpath` of TX: keep the paths absolute. The thread then serves the calls through one exported function, `clickhouse.call`.
+* The thread keeps one query object, with its HTTP connection, for each URL, query text, timeout and headers, so a query created anew for each batch reuses the connection there.
+* The data and the result cross between TX and the thread as MessagePack: the rows as strings, the parameters as a table.
+* Everything else is the same: the calls, the results and the errors. An error of the threads themselves comes as `false, error`.
 
 ### Results
 
@@ -337,6 +356,8 @@ A few notes from production:
 | Function | Description |
 |---|---|
 | `house.new(url, headers, query [, timeout])` | Creates a query object, see [Queries](#queries) |
+| `house.new(url, headers, query, options)` | The same with `{ timeout, thread, thread_id }`, see [In a thread](#in-a-thread) |
+| `house.serve()` | Exports the function of the module in a thread; the first query in the thread calls it |
 | `query(rows)`, `query(raw)` | Runs an INSERT with the data |
 | `query(parameters)`, `query()` | Runs another query, with or without parameters |
 
@@ -370,11 +391,12 @@ A few notes from production:
 
 ## Tests
 
-`Tests/ClickHouseTest.lua` checks every helper and every form of a query against a live ClickHouse: MessagePack, TabSeparated and RowBinary with all the forms of Nullable, UUID, Decimal32, Decimal64 and Decimal128, DateTime64, long strings, parameters with special characters, settings in the URL, errors of ClickHouse and a refused connection.
+`Tests/ClickHouseTest.lua` checks every helper and every form of a query against a live ClickHouse: MessagePack, TabSeparated and RowBinary with all the forms of Nullable, UUID, Decimal32, Decimal64 and Decimal128, DateTime64, long strings, parameters with special characters, settings in the URL, errors of ClickHouse and a refused connection. With `THREAD=1` every query runs in an application thread, and fibers call one query object there at once.
 
 * `Tests/DockerTest.sh` runs it with ClickHouse and Tarantool in Docker.
 * `Tests/RemoteTest.sh host` does the same on another Docker host over ssh.
 * `CLICKHOUSE_IMAGE` and `TARANTOOL_IMAGE` choose the images, `clickhouse/clickhouse-server:25.3` and `tarantool/tarantool:3` by default.
+* `THREAD=1` runs the queries in a thread: `TARANTOOL_IMAGE=tarantool/tarantool:3.9.0 THREAD=1 Tests/DockerTest.sh`.
 
 ## License
 

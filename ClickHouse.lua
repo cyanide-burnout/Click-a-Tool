@@ -6,6 +6,8 @@
   The HTTP interface of ClickHouse through http.client of Tarantool, requests and
   data compressed with deflate. Helpers encode values in the strict forms of MsgPack
   and RowBinary that ClickHouse expects. Tarantool 3, little-endian (amd64, aarch64).
+  With Tarantool 3.9 a query can run in an application thread: the compression and
+  the HTTP request leave TX, which only passes the data.
 
 ]]
 
@@ -16,8 +18,12 @@ local uuid     = require('uuid')
 local pickle   = require('pickle')
 local msgpack  = require('msgpack')
 local decimal  = require('decimal')
+local digest   = require('digest')
 local datetime = require('datetime')
 local client   = require('http.client')
+
+-- The name the module is required by: a thread requires it by the same name
+local MODULE = ... or 'ClickHouse'
 
 ffi.cdef([[
   const decimal_t* box_decimal_to_int64(const decimal_t* decimal, int64_t* number);
@@ -171,7 +177,7 @@ local function makeCall(object, data)
   return true, result.body
 end
 
-local function getNew(location, headers, query, timeout)
+local function getLocalQuery(location, headers, query, timeout)
   -- A copy of the headers: the table of the caller stays as it is
   local list      = { ['Content-Encoding'] = 'deflate' }
   local separator = location:find('?', 1, true) and '&' or '?'
@@ -180,7 +186,7 @@ local function getNew(location, headers, query, timeout)
   {
     client    = client.new({ max_connections = 1 }),
     separator = separator,
-    options   = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout or 30 }
+    options   = { headers = list, accept_encoding = 'deflate', keepalive_interval = 5, timeout = timeout }
   }
   if query:upper():match('^%s*INSERT%s') then
     object.location = location .. separator .. 'query=' .. getEscapedString(query)
@@ -190,6 +196,112 @@ local function getNew(location, headers, query, timeout)
   end
   setmetatable(object, { __call = makeCall })
   return object
+end
+
+-- Threads
+
+-- The function a thread exports: (key, specification, data)
+local EXPORT = 'clickhouse.call'
+
+-- What TX evaluates in a thread once: (path, cpath, module)
+local BOOT = [[
+local path, cpath, module = ...
+if package.loaded[module] == nil then
+  package.path, package.cpath = path, cpath
+end
+require(module).serve()
+]]
+
+local threads        -- require('threads'), loaded with the first query in a thread
+local queries = { }  -- In a thread: its query objects by key
+local booted  = { }  -- In TX: the threads that serve queries, by group and id
+
+-- One key per query: location, query, timeout and headers
+local function getQueryKey(location, headers, query, timeout)
+  local names = { }
+  for name in pairs(headers) do table.insert(names, name) end
+  table.sort(names)
+  local list = { location, query, tostring(timeout) }
+  for _, name in ipairs(names) do table.insert(list, name .. ':' .. tostring(headers[name])) end
+  return digest.sha256(table.concat(list, '\0'))
+end
+
+-- In a thread: the call of a query, its object made once
+local function runQuery(key, specification, data)
+  local object = queries[key]
+  if object == nil then
+    object       = getLocalQuery(unpack(specification, 1, 4))
+    queries[key] = object
+  end
+  return object(data)
+end
+
+-- In a thread: exports runQuery, once
+local function serveThread()
+  threads = threads or require('threads')
+  local status, problem = pcall(threads.export, EXPORT, runQuery)
+  if not status and not (type(problem) == 'cdata' and problem.name == 'FUNCTION_EXISTS') then
+    error(problem, 0)
+  end
+end
+
+-- In TX: the call goes to the thread, the module is loaded there with the first one
+local function makeThreadCall(object, data)
+  local thread = object.thread .. '/' .. object.thread_id
+  if not booted[thread] then
+    local status, problem = pcall(threads.eval, object.thread, BOOT,
+      { package.path, package.cpath, MODULE }, { target = object.thread_id })
+    if not status then return false, tostring(problem) end
+    booted[thread] = true
+  end
+  local status, result = pcall(threads.call, object.thread, EXPORT,
+    { object.key, object.specification, data }, { target = object.thread_id })
+  if not status then return false, tostring(result) end
+  return result[1][1], result[1][2]
+end
+
+local function getThreadQuery(location, headers, query, timeout, group, thread_id)
+  if threads == nil then
+    local status, module = pcall(require, 'threads')
+    if not status then
+      error('ClickHouse: a query in a thread needs application threads of Tarantool 3.9 or later', 3)
+    end
+    threads = module
+  end
+  local size
+  for _, item in ipairs(threads.info().groups) do
+    if item.name == group then size = item.size end
+  end
+  if size == nil then
+    error(string.format('ClickHouse: there is no group of threads %s', group), 3)
+  end
+  if type(thread_id) ~= 'number' or thread_id < 1 or thread_id > size or thread_id ~= math.floor(thread_id) then
+    error(string.format('ClickHouse: the group %s has threads 1 to %d', group, size), 3)
+  end
+  -- A copy of the headers, as the thread gets them
+  local list = { }
+  for name, value in pairs(headers or { }) do list[name] = value end
+  local object =
+  {
+    thread        = group,
+    thread_id     = thread_id,
+    key           = getQueryKey(location, list, query, timeout),
+    specification = { location, list, query, timeout }
+  }
+  setmetatable(object, { __call = makeThreadCall })
+  return object
+end
+
+-- options: a timeout in seconds, or a table { timeout, thread, thread_id }
+local function getNew(location, headers, query, options)
+  if type(options) ~= 'table' then
+    options = { timeout = options }
+  end
+  local timeout = options.timeout or 30
+  if options.thread ~= nil then
+    return getThreadQuery(location, headers, query, timeout, options.thread, options.thread_id or 1)
+  end
+  return getLocalQuery(location, headers, query, timeout)
 end
 
 return {
@@ -206,5 +318,7 @@ return {
   getDateTime64 = getNativeDateTime64,
   getNullable   = getNativeNullable,
   -- Query
-  new           = getNew
+  new           = getNew,
+  -- Threads: what a thread runs, TX evaluates it there
+  serve         = serveThread
 }
