@@ -130,7 +130,7 @@ Parameters are the [query parameters](https://clickhouse.com/docs/en/interfaces/
 
 ### In a thread
 
-With `thread`, the query runs in an application thread of Tarantool 3.9 or later: there the rows are concatenated, compressed and sent, and the response is received. TX only passes the data to the thread and gets the result, so a large INSERT no longer takes the CPU of TX for deflate.
+With `thread`, the heavy part of a call runs in an application thread of Tarantool 3.9 or later: the compression of the data and the HTTP request. TX makes the rest as before, the URL with the parameters, the headers and the rows concatenated in one string, and passes them to the thread, so a large INSERT no longer takes the CPU of TX for deflate.
 
 ```lua
 box.cfg({ app_threads = 1 })  -- the group app of one thread; or threads.groups of the config
@@ -140,9 +140,9 @@ local status, result = insert(rows)  -- called in TX, as before
 ```
 
 * `thread` is the name of a group of threads, `thread_id` the thread of it, 1 by default. `house.new()` raises an error when the group or the thread does not exist, or Tarantool has no application threads.
-* The first query loads the module in the thread with `threads.eval()` under the name it was required by in TX, with `package.path` and `package.cpath` of TX: keep the paths absolute. The thread then serves the calls through one exported function, `clickhouse.call`.
-* The thread keeps one query object, with its HTTP connection, for each URL, query text, timeout and headers, so a query created anew for each batch reuses the connection there.
-* The data and the result cross between TX and the thread as MessagePack: the rows as strings, the parameters as a table.
+* The first query loads the module in the thread with `threads.eval()` under the name it was required by in TX, with `package.path` and `package.cpath` of TX: keep the paths absolute. The thread then serves the calls through one exported function, `clickhouse.send`.
+* The thread sends the requests of all the queries with one HTTP client of its own, which keeps the connections alive, so a query created anew for each batch reuses the connection there.
+* The URL, the data as one string, the options of the request and the result cross between TX and the thread as MessagePack.
 * Everything else is the same: the calls, the results and the errors. An error of the threads themselves comes as `false, error`.
 
 ### Results
