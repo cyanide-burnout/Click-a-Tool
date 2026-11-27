@@ -212,9 +212,9 @@ end
 require(module).serve()
 ]]
 
-local threads        -- require('threads'), loaded with the first query in a thread
-local queries = { }  -- In a thread: its query objects by key
-local booted  = { }  -- In TX: the threads that serve queries, by group and id
+local threads          -- require('threads'), loaded with the first query in a thread
+local queries   = { }  -- In a thread: its query objects by key
+local instances = { }  -- In TX: the threads that serve queries, by group and id
 
 -- One key per query: location, query, timeout and headers
 local function getQueryKey(location, headers, query, timeout)
@@ -248,11 +248,11 @@ end
 -- In TX: the call goes to the thread, the module is loaded there with the first one
 local function makeThreadCall(object, data)
   local thread = object.thread .. '/' .. object.thread_id
-  if not booted[thread] then
+  if not instances[thread] then
     local status, problem = pcall(threads.eval, object.thread, BOOT,
       { package.path, package.cpath, MODULE }, { target = object.thread_id })
     if not status then return false, tostring(problem) end
-    booted[thread] = true
+    instances[thread] = true
   end
   local status, result = pcall(threads.call, object.thread, EXPORT,
     { object.key, object.specification, data }, { target = object.thread_id })
