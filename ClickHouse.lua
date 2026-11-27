@@ -154,9 +154,9 @@ local function getCompressedData(data)
   return zlib.deflate(9, 15)(data, 'finish')
 end
 
--- The request: the data is compressed here, unless it is the text of a query compressed already
-local function sendRequest(http, location, data, compressed, options)
-  local status, result = pcall(http.post, http, location, compressed and data or getCompressedData(data), options)
+-- The request: body is the text of a query compressed already, otherwise the data is compressed here
+local function sendRequest(http, location, body, data, options)
+  local status, result = pcall(http.post, http, location, body or getCompressedData(data), options)
   if not status then return false, result or 'HTTP request failed without error details' end
   if type(result) ~= 'table' or not result.status then return false, 'HTTP request returned no response' end
   if result.status == 200 then return true, result.body end
@@ -178,14 +178,14 @@ local function serveThread()
   if not status and not (type(problem) == 'cdata' and problem.name == 'FUNCTION_EXISTS') then error(problem, 0) end
 end
 
-local function sendToThread(object, location, data, compressed)
+local function sendToThread(object, location, body, data)
   local thread, target = object.thread .. '/' .. object.thread_id, { target = object.thread_id }
   if not instances[thread] then
     local status, problem = pcall(threads.eval, object.thread, BOOT, { package.path, package.cpath, MODULE }, target)
     if not status then return false, tostring(problem) end
     instances[thread] = true
   end
-  local status, result = pcall(threads.call, object.thread, EXPORT, { location, data, compressed, object.options }, target)
+  local status, result = pcall(threads.call, object.thread, EXPORT, { location, body, data, object.options }, target)
   if not status then return false, tostring(result) end
   return result[1][1], result[1][2]
 end
@@ -204,17 +204,17 @@ end
 -- Query object: the URL and the data are made in TX, compression and the request go here or to the thread
 
 local function makeCall(object, data)
-  local location, compressed = object.location, object.body ~= nil
-  if compressed and type(data) == 'table' then
+  local location, body = object.location, object.body or false
+  if body and type(data) == 'table' then
     local query = { }
     for name, value in pairs(data) do table.insert(query, string.format('param_%s=%s', name, getEscapedString(value))) end
     location = location .. object.separator .. table.concat(query, '&')
   end
-  if compressed             then data = object.body            end
+  if body                   then data = ''                     end
   if type(data) == 'table'  then data = table.concat(data, '') end
   if type(data) ~= 'string' then data = ''                     end
-  if object.thread then return sendToThread(object, location, data, compressed) end
-  return sendRequest(object.client, location, data, compressed, object.options)
+  if object.thread then return sendToThread(object, location, body, data) end
+  return sendRequest(object.client, location, body, data, object.options)
 end
 
 -- options: a timeout in seconds, or a table { timeout, thread, thread_id }
